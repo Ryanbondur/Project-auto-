@@ -8,7 +8,10 @@ import {
 } from "./constants";
 import type { CreepInstance, WaveRuntime } from "./types";
 
-export function planWaveRuntime(waveNumber: number): WaveRuntime {
+export function planWaveRuntime(
+  waveNumber: number,
+  eventHpMult = 1,
+): WaveRuntime {
   const def = buildWaveDef(waveNumber);
   const spawnQueue: WaveRuntime["spawnQueue"] = [];
   let t = 0;
@@ -23,6 +26,7 @@ export function planWaveRuntime(waveNumber: number): WaveRuntime {
     spawnQueue,
     elapsedMs: 0,
     allSpawned: spawnQueue.length === 0,
+    eventHpMult: Math.max(0.1, eventHpMult),
   };
 }
 
@@ -32,14 +36,17 @@ export function spawnDueCreeps(
   nextId: () => string,
   dtMs: number,
   waveNumber = 1,
+  /** Extra HP multiplier from run events (e.g. 0.9 = −10%). */
+  eventHpMult = 1,
 ): void {
   runtime.elapsedMs += dtMs;
-  const hpMult = waveHpMultiplier(
-    waveNumber,
-    WAVE_HP_SCALE_PER_WAVE,
-    WAVE_HP_SCALE_ENDLESS_EXTRA,
-    WAVE_HP_ENDLESS_START,
-  );
+  const hpMult =
+    waveHpMultiplier(
+      waveNumber,
+      WAVE_HP_SCALE_PER_WAVE,
+      WAVE_HP_SCALE_ENDLESS_EXTRA,
+      WAVE_HP_ENDLESS_START,
+    ) * Math.max(0.1, eventHpMult);
   while (runtime.spawnQueue.length > 0) {
     const next = runtime.spawnQueue[0]!;
     if (next.spawnAtMs > runtime.elapsedMs) break;

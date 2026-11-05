@@ -1,3 +1,4 @@
+import { effectiveBoardSlots } from "../core/events";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
@@ -10,7 +11,7 @@ export function StatsBar({ onPause }: StatsBarProps) {
   const era =
     state.metaApplied.eraThresholds.find((e) => e.era === state.currentEra) ??
     state.metaApplied.eraThresholds[0]!;
-  const slots = era.maxBoardSlots;
+  const slots = effectiveBoardSlots(era.maxBoardSlots, state.modifiers);
   const shortEra = era.name.split("/")[0]?.trim() ?? era.name;
 
   return (

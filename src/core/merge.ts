@@ -10,8 +10,100 @@ export type MergeResult = MergePools & {
   mergeCount: number;
 };
 
+export type PairMergeResult =
+  | (MergePools & { ok: true; product: UnitInstance })
+  | { ok: false; reason: string };
+
 function keyOf(u: UnitInstance): string {
   return `${u.defId}::${u.starLevel}`;
+}
+
+function locateUnit(
+  board: UnitInstance[],
+  bench: UnitInstance[],
+  instanceId: string,
+):
+  | { unit: UnitInstance; loc: "board" | "bench"; index: number }
+  | null {
+  const bi = board.findIndex((u) => u.instanceId === instanceId);
+  if (bi >= 0) return { unit: board[bi]!, loc: "board", index: bi };
+  const ni = bench.findIndex((u) => u.instanceId === instanceId);
+  if (ni >= 0) return { unit: bench[ni]!, loc: "bench", index: ni };
+  return null;
+}
+
+/**
+ * Explicit drag-combine: merge source onto target when same defId + starLevel.
+ * Works board↔board, bench↔bench, bench↔board. Uncapped stars.
+ * Placement: prefer target's board tile, else source's, else bench.
+ */
+export function mergeSpecificPair(
+  board: UnitInstance[],
+  bench: UnitInstance[],
+  sourceId: string,
+  targetId: string,
+  createInstanceId: () => string,
+): PairMergeResult {
+  if (sourceId === targetId) {
+    return { ok: false, reason: "same_unit" };
+  }
+  const a = locateUnit(board, bench, sourceId);
+  const b = locateUnit(board, bench, targetId);
+  if (!a || !b) return { ok: false, reason: "unit_not_found" };
+  if (a.unit.defId !== b.unit.defId || a.unit.starLevel !== b.unit.starLevel) {
+    return { ok: false, reason: "not_identical_pair" };
+  }
+
+  let nextBoard = [...board];
+  let nextBench = [...bench];
+
+  const removeFrom = (loc: "bench" | "board", index: number) => {
+    if (loc === "bench") {
+      nextBench = nextBench.filter((_, i) => i !== index);
+    } else {
+      nextBoard = nextBoard.filter((_, i) => i !== index);
+    }
+  };
+
+  // Remove higher index first when same list so indices stay valid.
+  if (a.loc === b.loc) {
+    const hi = Math.max(a.index, b.index);
+    const lo = Math.min(a.index, b.index);
+    removeFrom(a.loc, hi);
+    removeFrom(a.loc, lo);
+  } else {
+    removeFrom(b.loc, b.index);
+    removeFrom(a.loc, a.index);
+  }
+
+  const boardTile =
+    (b.loc === "board" ? b.unit.tile : null) ??
+    (a.loc === "board" ? a.unit.tile : null);
+
+  const product: UnitInstance = {
+    instanceId: createInstanceId(),
+    defId: a.unit.defId,
+    starLevel: a.unit.starLevel + 1,
+    targeting: b.unit.targeting,
+    tile: boardTile,
+    cooldownMs: 0,
+    currentTargetId: null,
+    chipInstanceIds: [...a.unit.chipInstanceIds, ...b.unit.chipInstanceIds],
+    fromMerge: true,
+  };
+
+  if (boardTile) {
+    nextBoard.push(product);
+  } else {
+    nextBench.push(product);
+  }
+
+  return {
+    ok: true,
+    board: nextBoard,
+    bench: nextBench,
+    product,
+  };
 }
 
 /**

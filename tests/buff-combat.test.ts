@@ -122,6 +122,7 @@ describe("buff craftsman combat hooks", () => {
       spawnQueue: [],
       elapsedMs: 0,
       allSpawned: true,
+      eventHpMult: 1,
     };
     expect(chipHealPulseAmount(state.board[0]!, state.chips)).toBe(3);
     tickCombat(state, 16, () => "p_x");

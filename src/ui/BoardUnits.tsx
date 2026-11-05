@@ -3,10 +3,29 @@ import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
-export function BoardUnits() {
+export type BoardUnitsProps = {
+  onUnitPointerDown?: (
+    e: React.PointerEvent,
+    instanceId: string,
+    label: string,
+  ) => void;
+  onUnitPointerMove?: (e: React.PointerEvent) => void;
+  onUnitPointerUp?: (e: React.PointerEvent) => void;
+  onUnitPointerCancel?: (e: React.PointerEvent) => void;
+  onInspect?: (instanceId: string) => void;
+};
+
+export function BoardUnits({
+  onUnitPointerDown,
+  onUnitPointerMove,
+  onUnitPointerUp,
+  onUnitPointerCancel,
+  onInspect,
+}: BoardUnitsProps) {
   const state = useGameState();
-  const canAct = state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP";
-  // Targeting can be cycled anytime including during fight for feel.
+  const canAct =
+    (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP") &&
+    !state.eventChoice;
   const canCycle = state.phase !== "RUN_DEFEAT";
 
   if (state.board.length === 0) {
@@ -21,22 +40,33 @@ export function BoardUnits() {
         const def = getUnitDef(unit.defId);
         const fill = def ? eraColor(def.era) : eraColor(1);
         const selected = state.selectedInstanceId === unit.instanceId;
+        const label = `${def?.name ?? unit.defId} ${"★".repeat(Math.min(unit.starLevel, 8))}`;
         return (
-          <li key={unit.instanceId} className={`board-unit${selected ? " selected" : ""}`}>
+          <li
+            key={unit.instanceId}
+            className={`board-unit${selected ? " selected" : ""}`}
+            data-unit-id={unit.instanceId}
+          >
             <button
               type="button"
               className="bench-select"
-              onClick={() =>
-                gameStore.selectUnit(selected ? null : unit.instanceId)
+              data-unit-id={unit.instanceId}
+              style={{ touchAction: "none" }}
+              onPointerDown={(e) =>
+                canAct && onUnitPointerDown
+                  ? onUnitPointerDown(e, unit.instanceId, label)
+                  : gameStore.selectUnit(selected ? null : unit.instanceId)
               }
+              onPointerMove={onUnitPointerMove}
+              onPointerUp={onUnitPointerUp}
+              onPointerCancel={onUnitPointerCancel}
             >
               <div
                 className="unit-swatch"
                 style={{ background: fill }}
               />
               <span>
-                {def?.name ?? unit.defId} {"★".repeat(Math.min(unit.starLevel, 8))} @ (
-                {unit.tile?.x},{unit.tile?.y}) · {unit.targeting}
+                {label} @ ({unit.tile?.x},{unit.tile?.y}) · {unit.targeting}
               </span>
             </button>
             <button
@@ -44,7 +74,7 @@ export function BoardUnits() {
               className="btn ghost"
               disabled={!canCycle}
               onClick={() => gameStore.cycleTargeting(unit.instanceId)}
-              title="Cycle targeting: First / Last / Strongest / Lowest HP / AOE Cluster"
+              title="Cycle targeting"
             >
               Target
             </button>
@@ -52,17 +82,10 @@ export function BoardUnits() {
               type="button"
               className="btn ghost"
               disabled={!canAct}
-              onClick={() => gameStore.moveToBench(unit.instanceId)}
+              onClick={() => onInspect?.(unit.instanceId)}
+              title="Inspect / sell"
             >
-              Bench
-            </button>
-            <button
-              type="button"
-              className="btn ghost"
-              disabled={!canAct}
-              onClick={() => gameStore.sellUnit(unit.instanceId)}
-            >
-              Sell
+              Info
             </button>
           </li>
         );

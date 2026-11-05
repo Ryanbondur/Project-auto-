@@ -60,6 +60,8 @@ export function pathProgress(
 export function sabotageSpeedMult(
   pathIndex: number,
   sabotages: PathSabotageInstance[],
+  /** Optional run-event slow lane (same span/mult as Tar Slick). */
+  eventSlowPathIndex: number | null = null,
 ): number {
   let mult = 1;
   for (const s of sabotages) {
@@ -72,6 +74,13 @@ export function sabotageSpeedMult(
     ) {
       mult *= SABOTAGE_SLOW_MULT;
     }
+  }
+  if (
+    eventSlowPathIndex !== null &&
+    pathIndex >= eventSlowPathIndex &&
+    pathIndex <= eventSlowPathIndex + SABOTAGE_SLOW_SPAN
+  ) {
+    mult *= SABOTAGE_SLOW_MULT;
   }
   return mult;
 }

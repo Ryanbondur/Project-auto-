@@ -1070,4 +1070,274 @@ html.standalone body {
     font-size: 0.7rem;
     color: var(--muted);
   }
+
+  .event-overlay {
+    align-items: center;
+  }
+
+  .event-sheet {
+    border-radius: 12px;
+    border-bottom: 1px solid var(--border);
+    animation: none;
+  }
+}
+
+/* —— Sell zone (drag target + selected-unit sell) —— */
+.sell-zone {
+  flex: 0 0 auto;
+  min-width: var(--touch);
+  min-height: var(--touch);
+}
+
+.sell-zone-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  min-width: 5.5rem;
+  min-height: var(--touch);
+  padding: 0.4rem 0.7rem;
+  border: 1px solid rgba(255, 77, 106, 0.45);
+  background: rgba(255, 77, 106, 0.08);
+  color: var(--atd-text);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 8px;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.sell-zone-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.sell-zone.hot .sell-zone-btn,
+.sell-zone.armed .sell-zone-btn {
+  border-color: var(--atd-danger);
+  background: rgba(255, 77, 106, 0.22);
+  box-shadow: 0 0 0 1px rgba(255, 77, 106, 0.25);
+}
+
+.sell-zone-icon {
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--atd-danger);
+}
+
+/* —— Drag ghost —— */
+.drag-ghost {
+  position: fixed;
+  z-index: 60;
+  pointer-events: none;
+  transform: translate(-50%, -120%);
+  padding: 0.45rem 0.7rem;
+  min-height: var(--touch);
+  display: flex;
+  align-items: center;
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-cyan);
+  border-radius: 8px;
+  color: var(--atd-text);
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 0 12px rgba(46, 230, 255, 0.25);
+}
+
+/* —— Auto-merge toggle —— */
+.auto-merge-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: var(--touch);
+  padding: 0 0.35rem;
+  font-size: 0.75rem;
+  color: var(--muted);
+  user-select: none;
+  touch-action: manipulation;
+}
+
+.auto-merge-toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--atd-cyan);
+}
+
+.auto-merge-toggle.dim {
+  opacity: 0.45;
+}
+
+/* —— Event choice sheet (1 of 2) —— */
+.event-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(7, 11, 16, 0.78);
+  padding:
+    var(--safe-top)
+    var(--safe-right)
+    var(--safe-bottom)
+    var(--safe-left);
+}
+
+.event-sheet {
+  width: min(100%, 420px);
+  max-height: min(78dvh, 560px);
+  overflow: auto;
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
+  border-radius: 14px 14px 0 0;
+  padding: 0.9rem 0.95rem 1.15rem;
+  animation: gambit-up 160ms ease-out;
+}
+
+.event-sheet-header {
+  margin-bottom: 0.75rem;
+}
+
+.event-kicker {
+  margin: 0 0 0.15rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--atd-cyan);
+}
+
+.event-sheet-header h2 {
+  margin: 0 0 0.25rem;
+  font-size: 1.15rem;
+}
+
+.event-options {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.event-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  text-align: left;
+  min-height: 88px;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font: inherit;
+  touch-action: manipulation;
+  cursor: pointer;
+}
+
+.event-option:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.event-option:not(:disabled):active {
+  border-color: var(--atd-cyan);
+}
+
+.event-option-kind {
+  font-size: 0.65rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--atd-cyan-dim);
+}
+
+.event-option.kind-boss .event-option-kind {
+  color: var(--atd-magenta);
+}
+
+.event-option.kind-spend .event-option-kind {
+  color: var(--atd-gold);
+}
+
+.event-option-title {
+  font-weight: 650;
+  font-size: 1.05rem;
+}
+
+.event-option-blurb {
+  font-size: 0.8rem;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.event-option-cost {
+  margin-top: 0.25rem;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--atd-gold);
+}
+
+/* —— Unit inspect sheet (long-press / Info) —— */
+.inspect-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 42;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(7, 11, 16, 0.65);
+  padding:
+    var(--safe-top)
+    var(--safe-right)
+    var(--safe-bottom)
+    var(--safe-left);
+}
+
+.inspect-sheet {
+  width: min(100%, 420px);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
+  border-radius: 14px 14px 0 0;
+  padding: 0.9rem 0.95rem 1.15rem;
+  animation: gambit-up 160ms ease-out;
+}
+
+.inspect-header {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  margin-bottom: 0.55rem;
+  padding-right: 2.75rem;
+}
+
+.inspect-header h2 {
+  margin: 0 0 0.15rem;
+  font-size: 1.05rem;
+}
+
+.inspect-stats {
+  margin: 0 0 0.75rem;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.inspect-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.inspect-sell {
+  flex: 1 1 auto;
+  min-width: 7rem;
+}
+
+.ready-row {
+  flex-wrap: wrap;
 }
