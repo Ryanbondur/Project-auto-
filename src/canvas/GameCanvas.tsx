@@ -47,8 +47,7 @@ export function GameCanvas() {
         aria-label="Game board grid"
       />
       <p className="board-hint">
-        Click a tile — path (dark green outline) is non-placeable. Check console /
-        stats for placeability.
+        Select a bench unit, then click a placeable tile (path tiles blocked).
       </p>
     </div>
   );

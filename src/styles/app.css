@@ -258,3 +258,68 @@ body {
   font-size: 0.72rem;
   color: var(--muted);
 }
+
+.shop-offer.purchased {
+  opacity: 0.55;
+}
+
+.offer-kind {
+  font-size: 0.7rem;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.bench-select {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+}
+
+.bench-slot.selected,
+.board-unit.selected {
+  outline: 1px solid var(--accent);
+}
+
+.board-units,
+.chip-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.board-unit,
+.chip-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.45rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.chip-inv {
+  margin-top: 0.75rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border);
+}
+
+.gambit-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}

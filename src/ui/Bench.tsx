@@ -1,14 +1,18 @@
 import { getUnitDef, ERA_HUE } from "../content/units";
+import { effectiveStats } from "../core/stats";
+import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
 function stars(n: number): string {
-  return "★".repeat(n);
+  const capped = Math.min(Math.max(1, n), 12);
+  return "★".repeat(capped) + (n > 12 ? `+${n - 12}` : "");
 }
 
 export function Bench() {
   const state = useGameState();
   const capacity = state.metaApplied.benchCapacity;
   const emptySlots = Math.max(0, capacity - state.bench.length);
+  const canAct = state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP";
 
   return (
     <section className="bench panel">
@@ -16,24 +20,53 @@ export function Bench() {
         <h2>Bench</h2>
         <span className="muted">
           {state.bench.length}/{capacity}
+          {state.selectedInstanceId ? " · selected" : ""}
         </span>
       </div>
       <ul className="bench-slots">
         {state.bench.map((unit) => {
           const def = getUnitDef(unit.defId);
           const hue = def ? ERA_HUE[def.era] : 0;
+          const stats = effectiveStats(unit, state.metaApplied);
+          const selected = state.selectedInstanceId === unit.instanceId;
           return (
-            <li key={unit.instanceId} className="bench-slot filled">
-              <div
-                className="unit-swatch"
-                style={{ background: `hsl(${hue} 55% 42%)` }}
-              />
-              <div>
-                <div className="offer-name">
-                  {def?.name ?? unit.defId} {stars(unit.starLevel)}
+            <li
+              key={unit.instanceId}
+              className={`bench-slot filled${selected ? " selected" : ""}`}
+            >
+              <button
+                type="button"
+                className="bench-select"
+                onClick={() =>
+                  gameStore.selectUnit(selected ? null : unit.instanceId)
+                }
+              >
+                <div
+                  className="unit-swatch"
+                  style={{ background: `hsl(${hue} 55% 42%)` }}
+                />
+                <div>
+                  <div className="offer-name">
+                    {def?.name ?? unit.defId} {stars(unit.starLevel)}
+                  </div>
+                  <div className="offer-meta">
+                    {stats
+                      ? `dmg ${stats.damage.toFixed(0)} · rng ${stats.range.toFixed(1)}`
+                      : unit.targeting}
+                    {unit.chipInstanceIds.length
+                      ? ` · chips ${unit.chipInstanceIds.length}`
+                      : ""}
+                  </div>
                 </div>
-                <div className="offer-meta">{unit.targeting}</div>
-              </div>
+              </button>
+              <button
+                type="button"
+                className="btn ghost"
+                disabled={!canAct}
+                onClick={() => gameStore.sellUnit(unit.instanceId)}
+              >
+                Sell
+              </button>
             </li>
           );
         })}
@@ -43,7 +76,10 @@ export function Bench() {
           </li>
         ))}
       </ul>
-      <p className="stub-note">Drag / place / merge stubbed until Phase 2.</p>
+      <p className="stub-note">
+        Select a bench unit, then click a placeable board tile. Board units: select →
+        Bench / Sell.
+      </p>
     </section>
   );
 }

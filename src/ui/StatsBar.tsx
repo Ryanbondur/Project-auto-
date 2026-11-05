@@ -37,6 +37,14 @@ export function StatsBar() {
         <span className="stat-label">Phase</span>
         <span className="stat-value phase">{state.phase}</span>
       </div>
+      {state.lastPayout && (
+        <div className="stat">
+          <span className="stat-label">Last payout</span>
+          <span className="stat-value">
+            +{state.lastPayout.interest} int / +{state.lastPayout.income} inc
+          </span>
+        </div>
+      )}
       {state.lastTileClick && (
         <div className="stat tile-debug">
           <span className="stat-label">Tile</span>
@@ -51,7 +59,7 @@ export function StatsBar() {
           type="button"
           className="btn ghost"
           onClick={() => gameStore.debugSetGold(state.gold + 5)}
-          title="Phase 1 debug"
+          title="Debug"
         >
           +5 gold
         </button>

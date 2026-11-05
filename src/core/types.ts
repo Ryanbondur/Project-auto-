@@ -1,4 +1,4 @@
-/** Content definition (roster entry). starLevel on def is usually 1 base card. */
+/** Content definition (roster entry). */
 export type UnitDef = {
   id: string;
   name: string;
@@ -17,7 +17,8 @@ export type UnitDef = {
   };
 };
 
-export type StarLevel = 1 | 2 | 3;
+/** Unbounded star level (pairwise merge; no hard cap for now). */
+export type StarLevel = number;
 
 export type TargetingMode =
   | "First"
@@ -26,7 +27,64 @@ export type TargetingMode =
   | "LowestHP"
   | "AoeCluster";
 
-/** Runtime instance on bench or board */
+/** Buff chip definition — sockets onto a unit; identical chips merge pairwise. */
+export type BuffChipDef = {
+  id: string;
+  name: string;
+  cost: number;
+  /** What the chip amplifies (placeholder combat hooks later). */
+  effect: "pierce" | "lifesteal" | "heal_pulse" | "aoe_ring";
+  description: string;
+};
+
+/** Runtime buff chip instance (inventory or socketed). */
+export type BuffChipInstance = {
+  instanceId: string;
+  defId: string;
+  starLevel: StarLevel;
+  /** null = in inventory / shop grant pending; set when socketed onto a unit */
+  socketedOnInstanceId: string | null;
+};
+
+/**
+ * Path sabotage board item stub.
+ * Rare items that slow a path segment or briefly fork/divert creeps.
+ * Must stay placement-legal (not path-blocking towers).
+ * TODO(Phase 3+): wire combat slow / fork behaviour.
+ */
+export type PathSabotageDef = {
+  id: string;
+  name: string;
+  cost: number;
+  kind: "slow_segment" | "brief_fork";
+  description: string;
+};
+
+export type PathSabotageInstance = {
+  instanceId: string;
+  defId: string;
+  /** Path index where the item is anchored (segment start). */
+  pathIndex: number | null;
+  placed: boolean;
+};
+
+/**
+ * Commander gambit — once-per-run rule bend.
+ * TODO(Phase 5 meta): present pick UI; spend HP or gold.
+ */
+export type GambitId =
+  | "double_interest"
+  | "free_rerolls"
+  | "random_higher_unit";
+
+export type CommanderGambitState = {
+  /** True after the player has used their one gambit this run. */
+  usedThisRun: boolean;
+  activeGambit: GambitId | null;
+  /** Extra free rerolls remaining when free_rerolls is active. */
+  freeRerollsRemaining: number;
+};
+
 export type UnitInstance = {
   instanceId: string;
   defId: string;
@@ -35,6 +93,10 @@ export type UnitInstance = {
   tile: { x: number; y: number } | null;
   cooldownMs: number;
   currentTargetId: string | null;
+  /** Ids of buff chips socketed on this unit (max soft-cap later). */
+  chipInstanceIds: string[];
+  /** True if this instance resulted from a merge (Quick Assembly meta hook). */
+  fromMerge: boolean;
 };
 
 export type CreepDef = {
@@ -75,8 +137,11 @@ export type EraConfig = {
   };
 };
 
+export type ShopOfferKind = "unit" | "buff_chip" | "path_sabotage";
+
 export type ShopOffer = {
   slotIndex: number;
+  kind: ShopOfferKind;
   defId: string;
   cost: number;
   purchased: boolean;
@@ -135,9 +200,17 @@ export type RunState = {
   board: UnitInstance[];
   bench: UnitInstance[];
   shop: ShopState;
+  /** Unsocketed chips in reserve (not on a unit). */
+  chipInventory: BuffChipInstance[];
+  /** All chip instances including socketed (lookup by id). */
+  chips: BuffChipInstance[];
+  pathSabotages: PathSabotageInstance[];
+  gambit: CommanderGambitState;
   creeps: CreepInstance[];
   projectiles: Projectile[];
   rngSeed: number;
+  /** UI: selected unit for place / sell / socket. */
+  selectedInstanceId: string | null;
   metaApplied: {
     interestCap: number;
     rangeMult: number;
@@ -145,10 +218,14 @@ export type RunState = {
     benchCapacity: number;
     eraThresholds: EraConfig[];
   };
-  /** Phase 1 debug: last tile click result for UI inspect */
   lastTileClick: {
     x: number;
     y: number;
     placeable: boolean;
+  } | null;
+  /** Last economy breakdown for HUD (prep cycle stub). */
+  lastPayout: {
+    interest: number;
+    income: number;
   } | null;
 };
