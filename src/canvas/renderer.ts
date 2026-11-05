@@ -1,16 +1,14 @@
 import { TILE_SIZE_PX } from "../core/constants";
-import { MAP, isPathTile } from "../content/map";
+import { MAP } from "../content/map";
 import { getCreepDef } from "../content/creeps";
 import { getPathSabotageDef } from "../content/pathSabotage";
-import { ERA_HUE, getUnitDef } from "../content/units";
 import { creepWorldPos } from "../core/pathing";
 import { projectileDrawPos } from "../core/combat";
-import type { CreepInstance, Projectile, RunState, UnitInstance } from "../core/types";
+import type { CreepInstance, Projectile, RunState } from "../core/types";
+import { drawUnit, type DrawContext } from "./drawUnit";
+import { shadeHex, theme, tintHex } from "./theme";
 
-export type DrawContext = {
-  ctx: CanvasRenderingContext2D;
-  tileSize: number;
-};
+export type { DrawContext };
 
 /** World (tile-unit) → canvas pixels. Art swaps stay above this. */
 export function worldToPx(
@@ -22,44 +20,158 @@ export function worldToPx(
 }
 
 /**
- * Thin draw adapters — placeholder skins only.
+ * Thin draw adapters — neon procedural skin (Phase A/B placeholders).
  * Combat / pathing / economy never depend on these shapes.
  * Later art: replace bodies of drawUnit / drawCreep / drawProjectile;
  * keep signatures + world positions from the sim.
  */
 
+function pathNeighbors(index: number): {
+  prev: { x: number; y: number } | null;
+  next: { x: number; y: number } | null;
+  corner: boolean;
+} {
+  const cur = MAP.path[index];
+  const prev = index > 0 ? MAP.path[index - 1]! : null;
+  const next = index < MAP.path.length - 1 ? MAP.path[index + 1]! : null;
+  let corner = false;
+  if (prev && next && cur) {
+    const dx0 = cur.x - prev.x;
+    const dy0 = cur.y - prev.y;
+    const dx1 = next.x - cur.x;
+    const dy1 = next.y - cur.y;
+    corner = dx0 !== dx1 || dy0 !== dy1;
+  }
+  return { prev, next, corner };
+}
+
+function drawChevron(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  angle: number,
+  size: number,
+): void {
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  ctx.strokeStyle = "rgba(46, 230, 255, 0.35)";
+  ctx.lineWidth = 1.25;
+  ctx.beginPath();
+  ctx.moveTo(-size * 0.35, -size * 0.3);
+  ctx.lineTo(size * 0.15, 0);
+  ctx.lineTo(-size * 0.35, size * 0.3);
+  ctx.stroke();
+  ctx.restore();
+}
+
 export function drawGrid(dc: DrawContext): void {
   const { ctx, tileSize } = dc;
   const { width, height } = MAP;
+  const phone = tileSize <= 52;
 
-  for (let y = 0; y < height; y++) {
-    for (let x = 0; x < width; x++) {
-      const px = x * tileSize;
-      const py = y * tileSize;
-      if (isPathTile(x, y)) {
-        ctx.fillStyle = "#3d4a3a";
-      } else {
-        ctx.fillStyle = (x + y) % 2 === 0 ? "#1e2430" : "#232a38";
-      }
-      ctx.fillRect(px, py, tileSize, tileSize);
-      ctx.strokeStyle = "rgba(255,255,255,0.06)";
-      ctx.strokeRect(px + 0.5, py + 0.5, tileSize - 1, tileSize - 1);
-    }
+  // Quiet void field
+  ctx.fillStyle = theme.bgBoard;
+  ctx.fillRect(0, 0, width * tileSize, height * tileSize);
+
+  // Optional faint square grid — kept subtle so path carries the look
+  ctx.strokeStyle = theme.gridLine;
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= width; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * tileSize + 0.5, 0);
+    ctx.lineTo(x * tileSize + 0.5, height * tileSize);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= height; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * tileSize + 0.5);
+    ctx.lineTo(width * tileSize, y * tileSize + 0.5);
+    ctx.stroke();
   }
 
-  ctx.strokeStyle = "#6b8f71";
-  ctx.lineWidth = 2;
+  // Neon lane — dim fill under selective cyan edge glow
   for (const p of MAP.path) {
+    const px = p.x * tileSize;
+    const py = p.y * tileSize;
+    const inset = tileSize * 0.12;
+    ctx.fillStyle = shadeHex(theme.cyanDim, 0.55);
+    ctx.fillRect(px + inset * 0.35, py + inset * 0.35, tileSize - inset * 0.7, tileSize - inset * 0.7);
+  }
+
+  ctx.save();
+  ctx.strokeStyle = theme.cyan;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = theme.cyan;
+  ctx.shadowBlur = phone ? theme.pathGlowBlur : theme.pathGlowBlur + 2;
+  for (const p of MAP.path) {
+    const inset = tileSize * 0.14;
     ctx.strokeRect(
-      p.x * tileSize + 2,
-      p.y * tileSize + 2,
-      tileSize - 4,
-      tileSize - 4,
+      p.x * tileSize + inset,
+      p.y * tileSize + inset,
+      tileSize - inset * 2,
+      tileSize - inset * 2,
     );
+  }
+  ctx.restore();
+
+  // Inner dim stroke (no glow) for lane body
+  ctx.strokeStyle = "rgba(26, 143, 163, 0.55)";
+  ctx.lineWidth = 1;
+  for (const p of MAP.path) {
+    const inset = tileSize * 0.22;
+    ctx.strokeRect(
+      p.x * tileSize + inset,
+      p.y * tileSize + inset,
+      tileSize - inset * 2,
+      tileSize - inset * 2,
+    );
+  }
+
+  // Sparse chevrons — corners + every N tiles (not a sticker strip)
+  const N = 5;
+  for (let i = 0; i < MAP.path.length - 1; i++) {
+    const { next, corner } = pathNeighbors(i);
+    if (!next) continue;
+    if (!corner && i % N !== 0) continue;
+    const cur = MAP.path[i]!;
+    const cx = (cur.x + 0.5) * tileSize;
+    const cy = (cur.y + 0.5) * tileSize;
+    const angle = Math.atan2(next.y - cur.y, next.x - cur.x);
+    drawChevron(ctx, cx, cy, angle, tileSize * 0.28);
+  }
+
+  // Modest exit beacon (path end) — not a crystal monument
+  const exit = MAP.path[MAP.path.length - 1];
+  if (exit) {
+    const ex = (exit.x + 0.5) * tileSize;
+    const ey = (exit.y + 0.5) * tileSize;
+    ctx.save();
+    ctx.strokeStyle = theme.danger;
+    ctx.fillStyle = "rgba(255, 77, 106, 0.18)";
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = theme.danger;
+    ctx.shadowBlur = phone ? 3 : 5;
+    ctx.beginPath();
+    ctx.arc(ex, ey, tileSize * 0.22, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Start pip — quiet cyan
+  const start = MAP.path[0];
+  if (start) {
+    const sx = (start.x + 0.5) * tileSize;
+    const sy = (start.y + 0.5) * tileSize;
+    ctx.fillStyle = "rgba(46, 230, 255, 0.35)";
+    ctx.beginPath();
+    ctx.arc(sx, sy, tileSize * 0.1, 0, Math.PI * 2);
+    ctx.fill();
   }
 }
 
-/** Draw a placed sabotage marker (slow = amber; fork = cyan). */
+/** Draw a placed sabotage marker (slow = gold tint; fork = cyan). */
 export function drawSabotageMarker(
   dc: DrawContext,
   pathIndex: number,
@@ -71,78 +183,124 @@ export function drawSabotageMarker(
   const cx = tile.x * tileSize + tileSize / 2;
   const cy = tile.y * tileSize + tileSize / 2;
   ctx.beginPath();
-  ctx.arc(cx, cy, tileSize * 0.22, 0, Math.PI * 2);
+  ctx.arc(cx, cy, tileSize * 0.2, 0, Math.PI * 2);
   if (kind === "brief_fork") {
-    ctx.fillStyle = "rgba(80, 160, 200, 0.4)";
+    ctx.fillStyle = "rgba(46, 230, 255, 0.22)";
     ctx.fill();
-    ctx.strokeStyle = "#6ec8e8";
+    ctx.strokeStyle = theme.cyan;
   } else {
-    ctx.fillStyle = "rgba(180, 140, 40, 0.45)";
+    ctx.fillStyle = "rgba(240, 193, 74, 0.28)";
     ctx.fill();
-    ctx.strokeStyle = "#d4b84a";
+    ctx.strokeStyle = theme.gold;
   }
+  ctx.lineWidth = 1.25;
   ctx.stroke();
-}
-
-export function drawUnit(dc: DrawContext, unit: UnitInstance): void {
-  if (!unit.tile) return;
-  const def = getUnitDef(unit.defId);
-  const { ctx, tileSize } = dc;
-  // Sim owns tile placement; adapter only presents.
-  const cx = (unit.tile.x + 0.5) * tileSize;
-  const cy = (unit.tile.y + 0.5) * tileSize;
-  const size = tileSize * 0.62;
-  const hue = def ? ERA_HUE[def.era] : 0;
-
-  ctx.fillStyle = `hsl(${hue} 55% 42%)`;
-  ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
-  ctx.strokeStyle = "#e8e6e0";
-  ctx.lineWidth = 1.5;
-  ctx.strokeRect(cx - size / 2, cy - size / 2, size, size);
-
-  ctx.fillStyle = "#f4f2ec";
-  ctx.font = `bold ${Math.floor(tileSize * 0.22)}px ui-monospace, monospace`;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  const label = def?.name.slice(0, 4) ?? "?";
-  ctx.fillText(label, cx, cy - 4);
-  ctx.fillText("★".repeat(Math.min(unit.starLevel, 5)), cx, cy + tileSize * 0.18);
 }
 
 /**
  * Creep position comes from sim-owned `creep.x/y` (continuous tile units).
- * Never snap to integer tile centers here — art swaps keep this adapter thin.
+ * Magenta hostile silhouettes; glow / light glitch reserved for bosses.
  */
 export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   if (!creep.alive) return;
-  const { ctx, tileSize } = dc;
+  const { ctx, tileSize, timeMs } = dc;
   const def = getCreepDef(creep.defId);
   const world = creepWorldPos(creep);
   const { x: cx, y: cy } = worldToPx(world.x + 0.5, world.y + 0.5, tileSize);
   const boss = def?.isBoss ?? false;
-  const r = tileSize * (boss ? 0.38 : 0.26);
+  const id = creep.defId;
   const maxHp = creep.maxHp > 0 ? creep.maxHp : (def?.maxHp ?? 1);
   const hpRatio = Math.max(0, creep.hp / maxHp);
 
+  // Size language: runner slim, tank wide, swarm small, boss ~1.0 tile
+  let scale = 0.55;
+  if (id === "creep_runner") scale = 0.48;
+  else if (id === "creep_tank") scale = 0.68;
+  else if (id === "creep_swarm") scale = 0.38;
+  else if (id === "creep_grunt") scale = 0.55;
+  if (boss) scale = 0.9;
+  const r = tileSize * 0.5 * scale;
+
+  ctx.save();
+  if (boss) {
+    // Light glitch only on bosses
+    const g = Math.sin(timeMs * 0.02) * 1.4;
+    ctx.translate(g, -g * 0.4);
+    ctx.shadowColor = theme.magenta;
+    ctx.shadowBlur = theme.bossGlowBlur;
+  }
+
+  ctx.fillStyle = boss ? tintHex(theme.magenta, 0.1) : theme.magenta;
+  ctx.strokeStyle = boss ? theme.gold : tintHex(theme.magenta, 0.35);
+  ctx.lineWidth = boss ? 2 : 1.25;
+
   ctx.beginPath();
-  ctx.arc(cx, cy, r, 0, Math.PI * 2);
-  ctx.fillStyle = boss ? "#8b2e3a" : "#c45c4a";
+  if (id === "creep_runner") {
+    // Elongated diamond — speed read
+    ctx.moveTo(cx, cy - r * 1.15);
+    ctx.lineTo(cx + r * 0.55, cy);
+    ctx.lineTo(cx, cy + r * 1.15);
+    ctx.lineTo(cx - r * 0.55, cy);
+    ctx.closePath();
+  } else if (id === "creep_tank") {
+    // Heavy trapezoid
+    ctx.moveTo(cx - r * 0.85, cy + r * 0.55);
+    ctx.lineTo(cx - r * 0.65, cy - r * 0.45);
+    ctx.lineTo(cx + r * 0.65, cy - r * 0.45);
+    ctx.lineTo(cx + r * 0.85, cy + r * 0.55);
+    ctx.closePath();
+  } else if (id === "creep_swarm") {
+    ctx.moveTo(cx, cy - r);
+    ctx.lineTo(cx + r * 0.9, cy + r * 0.7);
+    ctx.lineTo(cx - r * 0.9, cy + r * 0.7);
+    ctx.closePath();
+  } else if (boss) {
+    // Boss: hexagon
+    for (let i = 0; i < 6; i++) {
+      const a = (Math.PI / 3) * i - Math.PI / 6;
+      const px = cx + Math.cos(a) * r;
+      const py = cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  } else {
+    // Grunt: soft pentagon
+    for (let i = 0; i < 5; i++) {
+      const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+      const px = cx + Math.cos(a) * r;
+      const py = cy + Math.sin(a) * r;
+      if (i === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    }
+    ctx.closePath();
+  }
   ctx.fill();
-  ctx.strokeStyle = boss ? "#f5c842" : "#f0d0c8";
-  ctx.lineWidth = boss ? 2.5 : 1.5;
   ctx.stroke();
 
-  // Tiny HP stub bar (skin only)
-  const barW = r * 2;
-  const barH = 3;
-  ctx.fillStyle = "#1a1a1a";
-  ctx.fillRect(cx - barW / 2, cy - r - 8, barW, barH);
-  ctx.fillStyle = hpRatio > 0.35 ? "#6b8f71" : "#c45c4a";
-  ctx.fillRect(cx - barW / 2, cy - r - 8, barW * hpRatio, barH);
+  if (boss) {
+    // Second glitch ghost
+    ctx.globalAlpha = 0.25;
+    ctx.strokeStyle = theme.cyan;
+    ctx.translate(-2.5, 1.5);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+
+  // Thin HP bar
+  const barW = Math.max(r * 1.6, tileSize * 0.35);
+  const barH = 2.5;
+  const barY = cy - r - 7;
+  ctx.fillStyle = "rgba(7, 11, 16, 0.85)";
+  ctx.fillRect(cx - barW / 2, barY, barW, barH);
+  ctx.fillStyle = hpRatio > 0.35 ? theme.cyanDim : theme.danger;
+  ctx.fillRect(cx - barW / 2, barY, barW * hpRatio, barH);
 }
 
 /**
- * Projectile flight position from sim (`projectileDrawPos`); canvas only strokes it.
+ * Projectile flight — clean cyan travel; soft impact near arrival.
+ * Supports unit impressiveness; does not steal focus.
  */
 export function drawProjectile(dc: DrawContext, projectile: Projectile): void {
   const { ctx, tileSize } = dc;
@@ -150,34 +308,63 @@ export function drawProjectile(dc: DrawContext, projectile: Projectile): void {
   const { x: cx, y: cy } = worldToPx(draw.x, draw.y, tileSize);
   const { x: fx, y: fy } = worldToPx(projectile.from.x, projectile.from.y, tileSize);
 
-  // Short trail from recent segment (placeholder line + head dot)
-  ctx.strokeStyle = "rgba(240, 230, 168, 0.55)";
-  ctx.lineWidth = 2;
+  const aoe = projectile.aoeRadius > 0;
+  const head = aoe ? theme.magenta : theme.cyan;
+  const trail = aoe ? "rgba(255, 46, 200, 0.45)" : "rgba(46, 230, 255, 0.5)";
+
+  const tx = fx + (cx - fx) * Math.max(0, projectile.progress - 0.22);
+  const ty = fy + (cy - fy) * Math.max(0, projectile.progress - 0.22);
+
+  ctx.strokeStyle = trail;
+  ctx.lineWidth = aoe ? 2.25 : 1.75;
+  ctx.lineCap = "round";
   ctx.beginPath();
-  ctx.moveTo(fx + (cx - fx) * Math.max(0, projectile.progress - 0.2), fy + (cy - fy) * Math.max(0, projectile.progress - 0.2));
+  ctx.moveTo(tx, ty);
   ctx.lineTo(cx, cy);
   ctx.stroke();
 
   ctx.beginPath();
-  ctx.arc(cx, cy, tileSize * 0.12, 0, Math.PI * 2);
-  ctx.fillStyle = "#f5efb0";
+  ctx.arc(cx, cy, tileSize * (aoe ? 0.1 : 0.08), 0, Math.PI * 2);
+  ctx.fillStyle = head;
   ctx.fill();
-  ctx.strokeStyle = "#fff6c8";
-  ctx.lineWidth = 1;
-  ctx.stroke();
 
-  if (projectile.aoeRadius > 0 && projectile.progress > 0.85) {
+  // Soft impact — selective glow only near arrival
+  if (projectile.progress > 0.82) {
+    const t = (projectile.progress - 0.82) / 0.18;
+    ctx.save();
+    ctx.strokeStyle = head;
+    ctx.globalAlpha = 0.35 * t;
+    ctx.lineWidth = 1.25;
+    ctx.shadowColor = head;
+    ctx.shadowBlur = theme.impactGlowBlur;
     ctx.beginPath();
-    ctx.arc(cx, cy, projectile.aoeRadius * tileSize * projectile.progress, 0, Math.PI * 2);
-    ctx.strokeStyle = "rgba(240, 200, 120, 0.35)";
-    ctx.lineWidth = 1.5;
+    ctx.arc(cx, cy, tileSize * (0.14 + 0.12 * t), 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  if (aoe && projectile.progress > 0.85) {
+    ctx.beginPath();
+    ctx.arc(
+      cx,
+      cy,
+      projectile.aoeRadius * tileSize * projectile.progress * 0.85,
+      0,
+      Math.PI * 2,
+    );
+    ctx.strokeStyle = "rgba(255, 46, 200, 0.28)";
+    ctx.lineWidth = 1.25;
     ctx.stroke();
   }
 }
 
-export function renderBoard(ctx: CanvasRenderingContext2D, state: RunState): void {
+export function renderBoard(
+  ctx: CanvasRenderingContext2D,
+  state: RunState,
+  timeMs = performance.now(),
+): void {
   const tileSize = TILE_SIZE_PX;
-  const dc: DrawContext = { ctx, tileSize };
+  const dc: DrawContext = { ctx, tileSize, timeMs };
   ctx.clearRect(0, 0, MAP.width * tileSize, MAP.height * tileSize);
   drawGrid(dc);
 
@@ -187,14 +374,24 @@ export function renderBoard(ctx: CanvasRenderingContext2D, state: RunState): voi
       drawSabotageMarker(dc, s.pathIndex, def?.kind ?? "slow_segment");
     }
   }
-  for (const unit of state.board) drawUnit(dc, unit);
+  for (const unit of state.board) drawUnit(dc, unit, state);
   for (const creep of state.creeps) drawCreep(dc, creep);
   for (const proj of state.projectiles) drawProjectile(dc, proj);
 
+  // Placeable hint — subtle inset on last click only (not every empty pad)
   if (state.lastTileClick) {
     const { x, y, placeable } = state.lastTileClick;
-    ctx.strokeStyle = placeable ? "#7ec8ff" : "#ff7e7e";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x * tileSize + 1, y * tileSize + 1, tileSize - 2, tileSize - 2);
+    ctx.save();
+    ctx.strokeStyle = placeable ? theme.cyan : theme.danger;
+    ctx.globalAlpha = 0.7;
+    ctx.lineWidth = 1.5;
+    const inset = 3;
+    ctx.strokeRect(
+      x * tileSize + inset,
+      y * tileSize + inset,
+      tileSize - inset * 2,
+      tileSize - inset * 2,
+    );
+    ctx.restore();
   }
 }

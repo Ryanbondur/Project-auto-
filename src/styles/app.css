@@ -1,15 +1,39 @@
 :root {
   color-scheme: dark;
-  --bg: #12151c;
-  --bg-elev: #1a1f2a;
-  --bg-panel: #1e2430;
-  --border: #2c3444;
-  --text: #e8e6e0;
-  --muted: #9aa3b5;
-  --accent: #5b8def;
-  --accent-dim: #3a5a9a;
-  --danger: #c45c4a;
-  --ok: #6b8f71;
+  /* —— ATD theme tokens (sync with canvas/theme.ts) —— */
+  --atd-bg-void: #070b10;
+  --atd-bg-board: #0a121a;
+  --atd-grid-line: rgba(18, 32, 44, 0.35);
+  --atd-panel: rgba(14, 22, 32, 0.94);
+  --atd-panel-edge: rgba(46, 230, 255, 0.4);
+  --atd-text: #e8f4fa;
+  --atd-text-dim: #7a93a8;
+  --atd-danger: #ff4d6a;
+  --atd-gold: #f0c14a;
+  --atd-cyan: #2ee6ff;
+  --atd-cyan-dim: #1a8fa3;
+  --atd-magenta: #ff2ec8;
+  --atd-magenta-dim: #a31a7a;
+  --atd-glow-cyan: #2ee6ff;
+  --atd-glow-magenta: #ff2ec8;
+  --atd-era-1: #c4a574;
+  --atd-era-2: #8fb36a;
+  --atd-era-3: #d4a017;
+  --atd-era-4: #5b8cff;
+  --atd-era-5: #b388ff;
+
+  /* Legacy aliases → neon tokens */
+  --bg: var(--atd-bg-void);
+  --bg-elev: #0e1620;
+  --bg-panel: var(--atd-panel);
+  --border: var(--atd-panel-edge);
+  --text: var(--atd-text);
+  --muted: var(--atd-text-dim);
+  --accent: var(--atd-cyan);
+  --accent-dim: var(--atd-cyan-dim);
+  --danger: var(--atd-danger);
+  --ok: var(--atd-cyan-dim);
+  --gold: var(--atd-gold);
   --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --touch: 44px;
@@ -46,8 +70,8 @@ html {
 
 body {
   background:
-    radial-gradient(ellipse 90% 45% at 50% -8%, #1c2740 0%, transparent 55%),
-    var(--bg);
+    radial-gradient(ellipse 80% 40% at 50% -10%, rgba(46, 230, 255, 0.07) 0%, transparent 55%),
+    var(--atd-bg-void);
   overscroll-behavior: none;
   overflow: hidden;
   /* iOS Safari: prefer dynamic viewport when available */
@@ -130,8 +154,8 @@ html.standalone body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid var(--border);
-  background: #0d1016;
+  border: 1px solid var(--atd-panel-edge);
+  background: var(--atd-bg-board);
   padding: 0.2rem;
 }
 
@@ -170,8 +194,8 @@ html.standalone body {
   align-items: center;
   gap: 0.45rem 0.65rem;
   padding: 0.4rem 0.55rem;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -216,7 +240,15 @@ html.standalone body {
 
 .stat-value.phase {
   font-size: 0.68rem;
-  color: var(--accent);
+  color: var(--atd-cyan);
+}
+
+.stat-gold .stat-value {
+  color: var(--atd-gold);
+}
+
+.stat-hp .stat-value {
+  color: var(--atd-text);
 }
 
 .stat-actions {
@@ -228,8 +260,8 @@ html.standalone body {
 
 /* —— Panels / shop / bench —— */
 .panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
   padding: 0.5rem 0.55rem;
 }
 
@@ -296,7 +328,8 @@ html.standalone body {
   width: 28px;
   height: 28px;
   flex-shrink: 0;
-  border: 1px solid rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(46, 230, 255, 0.35);
+  border-radius: 2px;
 }
 
 .offer-body {
@@ -357,8 +390,9 @@ html.standalone body {
 }
 
 .btn.primary {
-  background: var(--accent-dim);
-  border-color: var(--accent);
+  background: rgba(26, 143, 163, 0.45);
+  border-color: var(--atd-cyan);
+  color: var(--atd-text);
 }
 
 .btn.buy {
@@ -413,7 +447,8 @@ html.standalone body {
 
 .bench-slot.selected,
 .board-unit.selected {
-  outline: 1px solid var(--accent);
+  outline: 1px solid var(--atd-cyan);
+  box-shadow: 0 0 0 1px rgba(46, 230, 255, 0.15);
 }
 
 .board-units,
@@ -483,8 +518,8 @@ html.standalone body {
   width: min(100%, 420px);
   max-height: min(78dvh, 560px);
   overflow: auto;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
   border-radius: 14px 14px 0 0;
   padding: 0.85rem 0.9rem 1.1rem;
   animation: gambit-up 160ms ease-out;
@@ -617,8 +652,8 @@ html.standalone body {
 
 .defeat-card,
 .era-sheet {
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
   border-bottom: 0;
   border-radius: 14px 14px 0 0;
   padding: 1rem 1rem calc(1rem + var(--safe-bottom));
@@ -780,7 +815,7 @@ html.standalone body {
   font-size: 0.72rem;
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--atd-cyan);
 }
 
 .menu-title {
@@ -804,8 +839,8 @@ html.standalone body {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.4rem;
   padding: 0.65rem 0.55rem;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
 }
 
 .menu-stat {
@@ -868,8 +903,8 @@ html.standalone body {
   flex-direction: column;
   gap: 0.55rem;
   padding: 0.75rem 0.8rem;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
 }
 
 .skill-card.owned {
@@ -940,8 +975,8 @@ html.standalone body {
   gap: 0.5rem;
   min-height: var(--touch);
   padding: 0.45rem 0.5rem;
-  background: var(--bg-elev);
-  border: 1px solid var(--border);
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
 }
 
 .codex-tile.locked {
