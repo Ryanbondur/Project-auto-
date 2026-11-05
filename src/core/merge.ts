@@ -87,6 +87,12 @@ export function autoMergePairwise(
       (a.loc === "board" ? a.unit.tile : null) ??
       (b.loc === "board" ? b.unit.tile : null);
 
+    // Transfer socketed chip ids onto the merge product (combat-live chips).
+    const transferredChips = [
+      ...a.unit.chipInstanceIds,
+      ...b.unit.chipInstanceIds,
+    ];
+
     const merged: UnitInstance = {
       instanceId: createInstanceId(),
       defId: a.unit.defId,
@@ -95,9 +101,7 @@ export function autoMergePairwise(
       tile: boardTile,
       cooldownMs: 0,
       currentTargetId: null,
-      // Chips from consumed units: defer — Phase 2 keeps chips on inventory;
-      // TODO: transfer/socket policy when chips are combat-live.
-      chipInstanceIds: [],
+      chipInstanceIds: transferredChips,
       fromMerge: true,
     };
 

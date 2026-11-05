@@ -6,7 +6,11 @@ export const DEFAULT_BENCH_CAPACITY = 5;
 /** Design-decisions: 3 offers (architecture default of 5 is overridden). */
 export const SHOP_SIZE = 3;
 export const REROLL_COST = 1 as const;
-export const WAVE_INCOME = 5;
+/**
+ * Balance pass (mechanics finish): wave income 5 → 6 so early phone runs can
+ * afford a second unit / chip without starving rerolls.
+ */
+export const WAVE_INCOME = 6;
 export const INTEREST_PER_10 = 1;
 export const INTEREST_CAP_DEFAULT = 5;
 export const INTEREST_CAP_SKILL = 8;
@@ -23,17 +27,17 @@ export const TILE_SIZE_PX = 48;
 /**
  * Star stat multipliers on base stats.
  * Canon: 1★ ×1, 2★ ×2, 3★ ×3.5.
- * Provisional for 4★+: continue the 3★/2★ growth ratio (1.75× per additional star).
- *   mult(n) = 3.5 * 1.75^(n-3) for n >= 3; special-cased below for 1–2.
- * No hard star cap in code for now.
+ * Balance pass: growth after 3★ softened 1.75 → 1.55 so uncapped pairwise
+ * stars do not explode mid-run while still rewarding high merges.
+ *   mult(n) = 3.5 * STAR_GROWTH_AFTER_3^(n-3) for n >= 3.
  */
-export const STAR_GROWTH_AFTER_3 = 1.75;
+export const STAR_GROWTH_AFTER_3 = 1.55;
 
 export function starStatMultiplier(starLevel: number): number {
   const n = Math.max(1, Math.floor(starLevel));
   if (n === 1) return 1;
   if (n === 2) return 2;
-  // n >= 3: 3.5 * 1.75^(n-3)
+  // n >= 3: 3.5 * growth^(n-3)
   return 3.5 * STAR_GROWTH_AFTER_3 ** (n - 3);
 }
 
@@ -46,3 +50,31 @@ export function baseCopiesForStar(starLevel: number): number {
 }
 
 export const MERGED_SELL_RATE = 0.8;
+
+/** Tunable: how many commander gambits per run (design: once-per-run default). */
+export const GAMBIT_USES_PER_RUN = 1;
+
+/** Gambit costs */
+export const GAMBIT_DOUBLE_INTEREST_HP_COST = 5;
+export const GAMBIT_FREE_REROLLS_GOLD_COST = 3;
+export const GAMBIT_FREE_REROLL_COUNT = 3;
+export const GAMBIT_RANDOM_2STAR_GOLD_COST = 8;
+
+/**
+ * Shop offer kind weights (balance pass).
+ * Order of rolls: sabotage first (rare), then chip, else unit.
+ */
+export const SHOP_SABOTAGE_CHANCE = 0.04;
+export const SHOP_CHIP_CHANCE = 0.2;
+
+/**
+ * Endless / late-wave HP scale. Applied on spawn.
+ * Mild through mid game; accelerates after era 5 band (wave 41+).
+ * hp *= 1 + (wave-1) * EARLY + max(0, wave-40) * LATE
+ */
+export const WAVE_HP_SCALE_PER_WAVE = 0.035;
+export const WAVE_HP_SCALE_ENDLESS_EXTRA = 0.025;
+export const WAVE_HP_ENDLESS_START = 40;
+
+/** Cap base HP heal from lifesteal / heal-pulse so chips cannot trivialize leaks. */
+export const BASE_HP_HEAL_CAP = STARTING_BASE_HP;

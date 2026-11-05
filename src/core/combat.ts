@@ -1,18 +1,32 @@
 import { MAP } from "../content/map";
-import { getBuffChipDef, pierceExtraTargets } from "../content/buffChips";
 import { getCreepDef } from "../content/creeps";
 import { getUnitDef } from "../content/units";
+import { BASE_HP_HEAL_CAP } from "./constants";
+import {
+  HEAL_PULSE_INTERVAL_MS,
+  chipAoeBonus,
+  chipDamageMultiplier,
+  chipHealPulseAmount,
+  chipLifestealFraction,
+  chipPierceExtra,
+} from "./buffEffects";
 import type {
-  BuffChipInstance,
   CreepInstance,
   Projectile,
   RunState,
   UnitInstance,
 } from "./types";
-import { creepWorldPos, moveCreepAlongPath, sabotageSpeedMult } from "./pathing";
+import {
+  creepWorldPos,
+  moveCreepAlongPath,
+  sabotageDivertOffset,
+  sabotageSpeedMult,
+} from "./pathing";
 import { applyLeak } from "./leak";
 import { selectTarget } from "./targeting";
 import { effectiveStats } from "./stats";
+
+export { HEAL_PULSE_INTERVAL_MS };
 
 /** Default projectile flight speed (tiles / second) — readable travel, not hitscan. */
 export const PROJECTILE_SPEED = 5.5;
@@ -21,39 +35,22 @@ function armorMitigation(damage: number, armor: number): number {
   return Math.max(1, damage - Math.max(0, armor) * 0.5);
 }
 
-function chipAoeBonus(unit: UnitInstance, chips: BuffChipInstance[]): number {
-  let bonus = 0;
-  for (const id of unit.chipInstanceIds) {
-    const chip = chips.find((c) => c.instanceId === id);
-    if (!chip) continue;
-    const def = getBuffChipDef(chip.defId);
-    if (def?.effect === "aoe_ring") {
-      bonus += 0.6 * chip.starLevel;
-    }
-  }
-  return bonus;
+function healBase(state: RunState, amount: number): void {
+  if (amount <= 0) return;
+  state.baseHp = Math.min(BASE_HP_HEAL_CAP, state.baseHp + amount);
 }
 
-function pierceCount(unit: UnitInstance, chips: BuffChipInstance[]): number {
-  let extra = 0;
-  for (const id of unit.chipInstanceIds) {
-    const chip = chips.find((c) => c.instanceId === id);
-    if (!chip) continue;
-    const def = getBuffChipDef(chip.defId);
-    if (def?.effect === "pierce") {
-      extra += pierceExtraTargets(chip.starLevel);
-    }
-  }
-  return extra;
-}
-
+/**
+ * Apply damage; returns total raw HP removed (pre-floor) for lifesteal accounting.
+ */
 function applyDamageToCreep(
   creeps: CreepInstance[],
   creepId: string,
   damage: number,
   aoeRadius: number,
   impactPos: { x: number; y: number },
-): void {
+): number {
+  let dealtTotal = 0;
   for (const creep of creeps) {
     if (!creep.alive || creep.hp <= 0) continue;
     const def = getCreepDef(creep.defId);
@@ -64,12 +61,15 @@ function applyDamageToCreep(
     const hitAoe = aoeRadius > 0 && dist <= aoeRadius;
     if (!hitPrimary && !hitAoe) continue;
     const dealt = armorMitigation(damage, def.armor);
+    const before = creep.hp;
     creep.hp -= dealt;
+    dealtTotal += Math.min(before, dealt);
     if (creep.hp <= 0) {
       creep.hp = 0;
       creep.alive = false;
     }
   }
+  return dealtTotal;
 }
 
 function applyPierce(
@@ -77,8 +77,9 @@ function applyPierce(
   primaryId: string,
   damage: number,
   pierceExtra: number,
-): void {
-  if (pierceExtra <= 0) return;
+): number {
+  if (pierceExtra <= 0) return 0;
+  let dealt = 0;
   const ordered = creeps
     .filter((c) => c.alive && c.hp > 0)
     .sort((a, b) => a.pathIndex + a.pathT - (b.pathIndex + b.pathT));
@@ -87,8 +88,15 @@ function applyPierce(
   for (let i = start; i < ordered.length && i < start + pierceExtra; i++) {
     const secondary = ordered[i]!;
     const spos = creepWorldPos(secondary);
-    applyDamageToCreep(creeps, secondary.instanceId, damage * 0.7, 0, spos);
+    dealt += applyDamageToCreep(
+      creeps,
+      secondary.instanceId,
+      damage * 0.7,
+      0,
+      spos,
+    );
   }
+  return dealt;
 }
 
 /** Visual lofted position: linear lerp + parabolic arc in y. */
@@ -98,6 +106,26 @@ export function projectileDrawPos(p: Projectile): { x: number; y: number } {
   const y = p.from.y + (p.aim.y - p.from.y) * t;
   const arc = p.arcHeight * 4 * t * (1 - t);
   return { x, y: y - arc };
+}
+
+/**
+ * Resolve a projectile arrival: damage + pierce + optional lifesteal from
+ * the firing unit (looked up by matching board chips via projectile metadata).
+ */
+export function resolveProjectileHit(
+  state: RunState,
+  p: Projectile,
+): number {
+  const impact = { ...p.aim };
+  let dealt = applyDamageToCreep(
+    state.creeps,
+    p.toCreepId,
+    p.damage,
+    p.aoeRadius,
+    { x: impact.x - 0.5, y: impact.y - 0.5 },
+  );
+  dealt += applyPierce(state.creeps, p.toCreepId, p.damage, p.pierceExtra);
+  return dealt;
 }
 
 /**
@@ -114,8 +142,6 @@ export function advanceProjectiles(state: RunState, dtMs: number): void {
     );
     if (target) {
       const wp = creepWorldPos(target);
-      // Aim at creep center; retarget smoothly by treating current pos as new from
-      // when aim jumps a lot (keeps flight continuous without teleport).
       const newAim = { x: wp.x + 0.5, y: wp.y + 0.5 };
       const aimDelta = Math.hypot(newAim.x - p.aim.x, newAim.y - p.aim.y);
       if (aimDelta > 0.35) {
@@ -134,7 +160,6 @@ export function advanceProjectiles(state: RunState, dtMs: number): void {
     } else {
       const step = (p.speed * dt) / dist;
       p.progress = Math.min(1, p.progress + step);
-      // Sim stores linear world pos; arc loft is render-only via projectileDrawPos.
       const t = p.progress;
       p.pos = {
         x: p.from.x + dx * t,
@@ -143,15 +168,10 @@ export function advanceProjectiles(state: RunState, dtMs: number): void {
     }
 
     if (p.progress >= 1) {
-      const impact = { ...p.aim };
-      applyDamageToCreep(
-        state.creeps,
-        p.toCreepId,
-        p.damage,
-        p.aoeRadius,
-        { x: impact.x - 0.5, y: impact.y - 0.5 },
-      );
-      applyPierce(state.creeps, p.toCreepId, p.damage, p.pierceExtra);
+      const dealt = resolveProjectileHit(state, p);
+      if (p.lifestealFraction > 0 && dealt > 0) {
+        healBase(state, Math.floor(dealt * p.lifestealFraction));
+      }
       continue;
     }
     remaining.push(p);
@@ -166,6 +186,7 @@ function spawnProjectile(
   damage: number,
   aoeRadius: number,
   pierceExtra: number,
+  lifestealFraction: number,
   nextId: () => string,
 ): Projectile {
   const from = { x: unit.tile!.x + 0.5, y: unit.tile!.y + 0.5 };
@@ -183,7 +204,24 @@ function spawnProjectile(
     progress: 0,
     pierceExtra,
     arcHeight: aoeRadius > 0 ? 0.55 : 0.35,
+    lifestealFraction,
   };
+}
+
+function tickHealPulses(state: RunState, dtMs: number): void {
+  let pulseAmount = 0;
+  for (const unit of state.board) {
+    if (!unit.tile) continue;
+    pulseAmount += chipHealPulseAmount(unit, state.chips);
+  }
+  if (pulseAmount <= 0) {
+    state.healPulseCooldownMs = HEAL_PULSE_INTERVAL_MS;
+    return;
+  }
+  state.healPulseCooldownMs = Math.max(0, state.healPulseCooldownMs - dtMs);
+  if (state.healPulseCooldownMs > 0) return;
+  healBase(state, pulseAmount);
+  state.healPulseCooldownMs = HEAL_PULSE_INTERVAL_MS;
 }
 
 export type CombatTickResult = {
@@ -204,19 +242,26 @@ export function tickCombat(
   const leakedIds: string[] = [];
   const clampedDt = Math.max(0, Math.min(dtMs, 50));
 
-  // 1) Continuous creep march along path (sub-tile pathT)
+  // 1) Continuous creep march along path (sub-tile pathT) + sabotage
   for (let i = 0; i < state.creeps.length; i++) {
     const creep = state.creeps[i]!;
     if (!creep.alive) continue;
     const def = getCreepDef(creep.defId);
     if (!def) continue;
     const mult = sabotageSpeedMult(creep.pathIndex, state.pathSabotages);
+    const divert = sabotageDivertOffset(
+      creep.pathIndex,
+      creep.pathT,
+      state.pathSabotages,
+      MAP,
+    );
     const { creep: moved, leaked } = moveCreepAlongPath(
       creep,
       def.speed,
       clampedDt,
       MAP,
       mult,
+      divert,
     );
     state.creeps[i] = moved;
     if (leaked) {
@@ -231,10 +276,13 @@ export function tickCombat(
     }
   }
 
-  // 2) Advance projectiles; hits resolve on arrival
+  // 2) Advance projectiles; hits resolve on arrival (lifesteal applied there)
   advanceProjectiles(state, clampedDt);
 
-  // 3) Fire boarded units when cooldown ready
+  // 3) Heal-pulse chips tick independently of attacks
+  tickHealPulses(state, clampedDt);
+
+  // 4) Fire boarded units when cooldown ready
   for (const unit of state.board) {
     if (!unit.tile) continue;
     unit.cooldownMs = Math.max(0, unit.cooldownMs - clampedDt);
@@ -248,6 +296,8 @@ export function tickCombat(
       if (d) defMap.set(d.id, d);
     }
     const aoe = stats.aoeRadius + chipAoeBonus(unit, state.chips);
+    const dmgMult = chipDamageMultiplier(unit, state.chips);
+    const damage = stats.damage * dmgMult;
     const target = selectTarget(
       unit.targeting,
       unit.tile,
@@ -259,9 +309,18 @@ export function tickCombat(
     unit.currentTargetId = target?.instanceId ?? null;
     if (!target) continue;
 
-    const pierce = pierceCount(unit, state.chips);
+    const pierce = chipPierceExtra(unit, state.chips);
+    const life = chipLifestealFraction(unit, state.chips);
     state.projectiles.push(
-      spawnProjectile(unit, target, stats.damage, aoe, pierce, nextProjectileId),
+      spawnProjectile(
+        unit,
+        target,
+        damage,
+        aoe,
+        pierce,
+        life,
+        nextProjectileId,
+      ),
     );
     unit.cooldownMs = 1000 / stats.attackSpeed;
   }

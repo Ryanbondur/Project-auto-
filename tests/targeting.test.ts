@@ -27,6 +27,7 @@ function creep(
     instanceId: id,
     defId,
     hp,
+    maxHp: hp,
     pathIndex,
     pathT,
     x: a.x + (b.x - a.x) * pathT,

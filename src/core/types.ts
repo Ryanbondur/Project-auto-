@@ -32,8 +32,8 @@ export type BuffChipDef = {
   id: string;
   name: string;
   cost: number;
-  /** What the chip amplifies (placeholder combat hooks later). */
-  effect: "pierce" | "lifesteal" | "heal_pulse" | "aoe_ring";
+  /** Combat amplification applied while socketed. */
+  effect: "damage" | "pierce" | "lifesteal" | "heal_pulse" | "aoe_ring";
   description: string;
 };
 
@@ -48,7 +48,7 @@ export type BuffChipInstance = {
 
 /**
  * Path sabotage board item.
- * Slow segments affect creep speed in pathing; brief_fork remains a placement stub.
+ * Slow segments cut creep speed; brief_fork applies a lateral divert hop.
  */
 export type PathSabotageDef = {
   id: string;
@@ -67,8 +67,8 @@ export type PathSabotageInstance = {
 };
 
 /**
- * Commander gambit — once-per-run rule bend.
- * TODO(Phase 5 meta): present pick UI; spend HP or gold.
+ * Commander gambit — once-per-run (tunable) rule bend.
+ * Spend HP or gold for a one-wave / this-prep bend.
  */
 export type GambitId =
   | "double_interest"
@@ -76,10 +76,12 @@ export type GambitId =
   | "random_higher_unit";
 
 export type CommanderGambitState = {
-  /** True after the player has used their one gambit this run. */
+  /** Gambits already spent this run (compared to GAMBIT_USES_PER_RUN). */
+  usesSpent: number;
+  /** @deprecated Prefer usesSpent; kept true when usesSpent >= cap. */
   usedThisRun: boolean;
   activeGambit: GambitId | null;
-  /** Extra free rerolls remaining when free_rerolls is active. */
+  /** Extra free rerolls remaining when free_rerolls is active (this prep). */
   freeRerollsRemaining: number;
 };
 
@@ -111,11 +113,14 @@ export type CreepInstance = {
   instanceId: string;
   defId: string;
   hp: number;
+  /** Max HP for this instance (may be wave-scaled vs catalog). */
+  maxHp: number;
   pathIndex: number;
   pathT: number;
   /**
    * Continuous world position in tile units (path centers).
    * Owned by the sim — renderer must use these, never invent grid snaps.
+   * Includes brief_fork lateral divert when active.
    */
   x: number;
   y: number;
@@ -194,6 +199,8 @@ export type Projectile = {
   pierceExtra: number;
   /** Optional arc height in tiles (visual loft). */
   arcHeight: number;
+  /** Fraction of damage dealt healed to base HP on arrival (lifesteal chip). */
+  lifestealFraction: number;
 };
 
 export type SkillId =
@@ -270,4 +277,6 @@ export type RunState = {
     interest: number;
     income: number;
   } | null;
+  /** Combat: ms until next heal-pulse tick across board heal_pulse chips. */
+  healPulseCooldownMs: number;
 };

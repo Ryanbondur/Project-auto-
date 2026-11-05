@@ -15,6 +15,7 @@ function makeCreep(pathIndex = 0, pathT = 0): CreepInstance {
     instanceId: "e1",
     defId: "creep_grunt",
     hp: 40,
+    maxHp: 40,
     pathIndex,
     pathT,
     x: a.x + (b.x - a.x) * pathT,
@@ -78,7 +79,7 @@ describe("continuous pathing", () => {
         placed: true,
       },
     ];
-    expect(sabotageSpeedMult(5, items)).toBe(0.5);
+    expect(sabotageSpeedMult(5, items)).toBe(0.55);
     expect(sabotageSpeedMult(20, items)).toBe(1);
   });
 });

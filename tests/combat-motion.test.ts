@@ -16,6 +16,7 @@ function flying(overrides: Partial<Projectile> = {}): Projectile {
     progress: 0,
     pierceExtra: 0,
     arcHeight: 0.4,
+    lifestealFraction: 0,
     ...overrides,
   };
 }
@@ -42,6 +43,7 @@ describe("projectile continuous flight", () => {
         instanceId: "c1",
         defId: "creep_grunt",
         hp: 40,
+        maxHp: 40,
         pathIndex: 2,
         pathT: 0,
         x: 2,

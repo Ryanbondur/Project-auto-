@@ -1,3 +1,4 @@
+import { HEAL_PULSE_INTERVAL_MS } from "./buffEffects";
 import { REROLL_COST, STARTING_BASE_HP } from "./constants";
 import { getEraConfig } from "../content/eras";
 import { MAP, isPathTile, isPlaceableTile } from "../content/map";
@@ -9,7 +10,12 @@ import {
   rollDiscoveryChoices,
   shouldAdvanceEra,
 } from "./era";
-import { createGambitState, interestMultiplier, tryActivateGambit } from "./gambit";
+import {
+  clearPrepGambitOnReady,
+  createGambitState,
+  interestMultiplier,
+  tryActivateGambit,
+} from "./gambit";
 import { autoMergeChipsPairwise, autoMergePairwise } from "./merge";
 import { tryMoveToBench, tryPlaceOnBoard } from "./placement";
 import { createShopState } from "./shop";
@@ -71,12 +77,29 @@ function makeUnit(defId: string, starLevel = 1, tile: UnitInstance["tile"] = nul
   };
 }
 
+function rebindTransferredChips(state: RunState): void {
+  // After unit merges, chipInstanceIds moved onto the new unit — rebind socket owner.
+  const ownerByChip = new Map<string, string>();
+  for (const u of [...state.board, ...state.bench]) {
+    for (const chipId of u.chipInstanceIds) {
+      ownerByChip.set(chipId, u.instanceId);
+    }
+  }
+  for (const chip of state.chips) {
+    const owner = ownerByChip.get(chip.instanceId);
+    if (owner) {
+      chip.socketedOnInstanceId = owner;
+    }
+  }
+}
+
 function applyMerges(state: RunState): void {
   const unitMerge = autoMergePairwise(state.board, state.bench, () =>
     createInstanceId("m"),
   );
   state.board = unitMerge.board;
   state.bench = unitMerge.bench;
+  rebindTransferredChips(state);
 
   const chipMerge = autoMergeChipsPairwise(state.chips, () => createInstanceId("c"));
   state.chips = chipMerge.chips;
@@ -121,6 +144,7 @@ export function createInitialRunState(
     },
     lastTileClick: null,
     lastPayout: null,
+    healPulseCooldownMs: HEAL_PULSE_INTERVAL_MS,
   };
   if (!options?.skipCodexReveal) {
     revealShopUnits(shop.offers);
@@ -260,6 +284,11 @@ export type GameStore = {
   debugCompleteWave: () => ActionResult;
   /** Reset in-memory run without touching meta (tests / debug). */
   resetRun: (seed?: number, skills?: SkillId[]) => void;
+  /**
+   * Debug / screenshot helper: grant a boarded unit, socketed pierce chip,
+   * inventory lifesteal chip, and placeable + placeable sabotage items.
+   */
+  debugSeedMechanicsDemo: () => ActionResult;
 };
 
 export function createStore(initial?: RunState): GameStore {
@@ -310,6 +339,8 @@ export function createStore(initial?: RunState): GameStore {
     next.waveRuntime = planWaveRuntime(next.waveNumber);
     next.selectedInstanceId = null;
     next.selectedSabotageId = null;
+    next.gambit = clearPrepGambitOnReady(next.gambit);
+    next.healPulseCooldownMs = HEAL_PULSE_INTERVAL_MS;
     for (const u of next.board) {
       u.cooldownMs = 0;
       u.currentTargetId = null;
@@ -528,10 +559,13 @@ export function createStore(initial?: RunState): GameStore {
       const next = cloneRunState(state);
       Object.assign(next, result.state);
       if (gambitId === "random_higher_unit") {
-        const def = UNIT_DEFS[next.rngSeed % UNIT_DEFS.length] ?? UNIT_DEFS[0];
+        const unlocked = UNIT_DEFS.filter((u) => u.era <= next.currentEra);
+        const pool = unlocked.length > 0 ? unlocked : UNIT_DEFS;
+        const def = pool[next.rngSeed % pool.length] ?? pool[0];
         if (def) {
           next.bench.push(makeUnit(def.id, 2, null));
           applyMerges(next);
+          metaApi.revealCodex([def.id]);
         }
         next.rngSeed = (next.rngSeed + 17) >>> 0;
       }
@@ -557,7 +591,13 @@ export function createStore(initial?: RunState): GameStore {
 
       // Hot path: mutate in place so canvas rAF stays smooth without
       // structuredClone every frame. React only needs a new snapshot on phase change.
-      spawnDueCreeps(state.waveRuntime, state.creeps, () => createInstanceId("e"), dtMs);
+      spawnDueCreeps(
+        state.waveRuntime,
+        state.creeps,
+        () => createInstanceId("e"),
+        dtMs,
+        state.waveNumber,
+      );
       const result = tickCombat(state, dtMs, () => createInstanceId("p"));
 
       if (result.defeated) {
@@ -679,6 +719,46 @@ export function createStore(initial?: RunState): GameStore {
       defeatAwarded = false;
       lastDefeatSummary = null;
       setState(createInitialRunState(seed ?? 42, skills ?? []));
+    },
+
+    debugSeedMechanicsDemo: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      next.gold = Math.max(next.gold, 40);
+      const unit = makeUnit("unit_slinger", 2, { x: 1, y: 1 });
+      const pierce: BuffChipInstance = {
+        instanceId: createInstanceId("c"),
+        defId: "chip_pierce",
+        starLevel: 2,
+        socketedOnInstanceId: unit.instanceId,
+      };
+      const life: BuffChipInstance = {
+        instanceId: createInstanceId("c"),
+        defId: "chip_lifesteal",
+        starLevel: 1,
+        socketedOnInstanceId: null,
+      };
+      unit.chipInstanceIds = [pierce.instanceId];
+      next.board = [unit];
+      next.bench = next.bench.filter((u) => u.instanceId !== unit.instanceId);
+      next.chips = [...next.chips, pierce, life];
+      next.chipInventory = next.chips.filter((c) => c.socketedOnInstanceId === null);
+      const tar: PathSabotageInstance = {
+        instanceId: createInstanceId("s"),
+        defId: "sabotage_tar_slick",
+        pathIndex: Math.min(8, MAP.path.length - 1),
+        placed: true,
+      };
+      const flare: PathSabotageInstance = {
+        instanceId: createInstanceId("s"),
+        defId: "sabotage_signal_flare",
+        pathIndex: null,
+        placed: false,
+      };
+      next.pathSabotages = [...next.pathSabotages, tar, flare];
+      next.selectedSabotageId = flare.instanceId;
+      setState(next);
+      return { ok: true };
     },
   };
 

@@ -1,63 +1,89 @@
+import {
+  GAMBIT_DOUBLE_INTEREST_HP_COST,
+  GAMBIT_FREE_REROLL_COUNT,
+  GAMBIT_FREE_REROLLS_GOLD_COST,
+  GAMBIT_RANDOM_2STAR_GOLD_COST,
+  GAMBIT_USES_PER_RUN,
+} from "./constants";
 import type { CommanderGambitState, GambitId, RunState } from "./types";
 
 export function createGambitState(): CommanderGambitState {
   return {
+    usesSpent: 0,
     usedThisRun: false,
     activeGambit: null,
     freeRerollsRemaining: 0,
   };
 }
 
+export function gambitsRemaining(gambit: CommanderGambitState): number {
+  return Math.max(0, GAMBIT_USES_PER_RUN - gambit.usesSpent);
+}
+
 export type GambitResult =
-  | { ok: true; state: Partial<RunState> & { gambit: CommanderGambitState; gold?: number; baseHp?: number } }
+  | {
+      ok: true;
+      state: Partial<RunState> & {
+        gambit: CommanderGambitState;
+        gold?: number;
+        baseHp?: number;
+      };
+    }
   | { ok: false; reason: string };
 
 /**
- * Commander gambit — once per run.
- * Spend HP or gold for a one-wave (or run) rule bend.
- * TODO: wire UI picker; combat-phase expiry for double_interest / free_rerolls.
+ * Commander gambit — once per run (tunable via GAMBIT_USES_PER_RUN).
+ * Spend HP or gold for a one-wave / this-prep rule bend.
  */
 export function tryActivateGambit(
   state: RunState,
   gambitId: GambitId,
 ): GambitResult {
-  if (state.gambit.usedThisRun) {
+  if (gambitsRemaining(state.gambit) <= 0) {
     return { ok: false, reason: "gambit_already_used" };
   }
   if (state.phase !== "SHOP_PREP" && state.phase !== "MERGE_SETUP") {
     return { ok: false, reason: "wrong_phase" };
   }
 
+  const usesSpent = state.gambit.usesSpent + 1;
   const gambit: CommanderGambitState = {
-    usedThisRun: true,
+    usesSpent,
+    usedThisRun: usesSpent >= GAMBIT_USES_PER_RUN,
     activeGambit: gambitId,
     freeRerollsRemaining: 0,
   };
 
   switch (gambitId) {
     case "double_interest": {
-      // Costs 5 HP — interest doubled on next payout (flag via activeGambit).
-      if (state.baseHp <= 5) return { ok: false, reason: "insufficient_hp" };
+      if (state.baseHp <= GAMBIT_DOUBLE_INTEREST_HP_COST) {
+        return { ok: false, reason: "insufficient_hp" };
+      }
       return {
         ok: true,
-        state: { gambit, baseHp: state.baseHp - 5 },
+        state: {
+          gambit,
+          baseHp: state.baseHp - GAMBIT_DOUBLE_INTEREST_HP_COST,
+        },
       };
     }
     case "free_rerolls": {
-      // Costs 3 gold — next 3 rerolls free.
-      if (state.gold < 3) return { ok: false, reason: "insufficient_gold" };
-      gambit.freeRerollsRemaining = 3;
+      if (state.gold < GAMBIT_FREE_REROLLS_GOLD_COST) {
+        return { ok: false, reason: "insufficient_gold" };
+      }
+      gambit.freeRerollsRemaining = GAMBIT_FREE_REROLL_COUNT;
       return {
         ok: true,
-        state: { gambit, gold: state.gold - 3 },
+        state: { gambit, gold: state.gold - GAMBIT_FREE_REROLLS_GOLD_COST },
       };
     }
     case "random_higher_unit": {
-      // Costs 8 gold — grant handled by store (needs RNG + unit spawn).
-      if (state.gold < 8) return { ok: false, reason: "insufficient_gold" };
+      if (state.gold < GAMBIT_RANDOM_2STAR_GOLD_COST) {
+        return { ok: false, reason: "insufficient_gold" };
+      }
       return {
         ok: true,
-        state: { gambit, gold: state.gold - 8 },
+        state: { gambit, gold: state.gold - GAMBIT_RANDOM_2STAR_GOLD_COST },
       };
     }
     default:
@@ -65,7 +91,20 @@ export function tryActivateGambit(
   }
 }
 
-/** Interest multiplier when double_interest gambit is active. */
+/** Interest multiplier when double_interest gambit is active for the next payout. */
 export function interestMultiplier(gambit: CommanderGambitState): number {
-  return gambit.activeGambit === "double_interest" && gambit.usedThisRun ? 2 : 1;
+  return gambit.activeGambit === "double_interest" ? 2 : 1;
+}
+
+/**
+ * Clear this-prep gambit effects when the wave starts
+ * (free rerolls expire; double_interest stays until payout).
+ */
+export function clearPrepGambitOnReady(gambit: CommanderGambitState): CommanderGambitState {
+  if (gambit.activeGambit !== "free_rerolls") return gambit;
+  return {
+    ...gambit,
+    activeGambit: null,
+    freeRerollsRemaining: 0,
+  };
 }

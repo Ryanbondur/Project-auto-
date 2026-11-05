@@ -116,8 +116,8 @@ describe("star stat scaling", () => {
     expect(starStatMultiplier(1)).toBe(1);
     expect(starStatMultiplier(2)).toBe(2);
     expect(starStatMultiplier(3)).toBe(3.5);
-    expect(starStatMultiplier(4)).toBeCloseTo(3.5 * 1.75, 8);
-    expect(starStatMultiplier(5)).toBeCloseTo(3.5 * 1.75 * 1.75, 8);
+    expect(starStatMultiplier(4)).toBeCloseTo(3.5 * 1.55, 8);
+    expect(starStatMultiplier(5)).toBeCloseTo(3.5 * 1.55 * 1.55, 8);
   });
 
   it("effectiveStats scales damage by star mult", () => {
