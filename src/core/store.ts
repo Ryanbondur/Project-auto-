@@ -284,6 +284,11 @@ export type GameStore = {
   debugCompleteWave: () => ActionResult;
   /** Reset in-memory run without touching meta (tests / debug). */
   resetRun: (seed?: number, skills?: SkillId[]) => void;
+  /**
+   * Debug / screenshot helper: grant a boarded unit, socketed pierce chip,
+   * inventory lifesteal chip, and placeable + placeable sabotage items.
+   */
+  debugSeedMechanicsDemo: () => ActionResult;
 };
 
 export function createStore(initial?: RunState): GameStore {
@@ -714,6 +719,46 @@ export function createStore(initial?: RunState): GameStore {
       defeatAwarded = false;
       lastDefeatSummary = null;
       setState(createInitialRunState(seed ?? 42, skills ?? []));
+    },
+
+    debugSeedMechanicsDemo: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      next.gold = Math.max(next.gold, 40);
+      const unit = makeUnit("unit_slinger", 2, { x: 1, y: 1 });
+      const pierce: BuffChipInstance = {
+        instanceId: createInstanceId("c"),
+        defId: "chip_pierce",
+        starLevel: 2,
+        socketedOnInstanceId: unit.instanceId,
+      };
+      const life: BuffChipInstance = {
+        instanceId: createInstanceId("c"),
+        defId: "chip_lifesteal",
+        starLevel: 1,
+        socketedOnInstanceId: null,
+      };
+      unit.chipInstanceIds = [pierce.instanceId];
+      next.board = [unit];
+      next.bench = next.bench.filter((u) => u.instanceId !== unit.instanceId);
+      next.chips = [...next.chips, pierce, life];
+      next.chipInventory = next.chips.filter((c) => c.socketedOnInstanceId === null);
+      const tar: PathSabotageInstance = {
+        instanceId: createInstanceId("s"),
+        defId: "sabotage_tar_slick",
+        pathIndex: Math.min(8, MAP.path.length - 1),
+        placed: true,
+      };
+      const flare: PathSabotageInstance = {
+        instanceId: createInstanceId("s"),
+        defId: "sabotage_signal_flare",
+        pathIndex: null,
+        placed: false,
+      };
+      next.pathSabotages = [...next.pathSabotages, tar, flare];
+      next.selectedSabotageId = flare.instanceId;
+      setState(next);
+      return { ok: true };
     },
   };
 
