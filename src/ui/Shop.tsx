@@ -35,6 +35,8 @@ function offerHue(kind: string, defId: string): number {
 export function Shop() {
   const state = useGameState();
   const canAct = state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP";
+  const eraOdds =
+    state.metaApplied.eraThresholds.find((e) => e.era === state.currentEra)?.shopOdds;
 
   return (
     <aside className="shop panel">
@@ -53,6 +55,12 @@ export function Shop() {
           )
         </button>
       </div>
+      {eraOdds ? (
+        <p className="shop-odds muted" title="Era-weighted offer chances">
+          Odds e1–5: {eraOdds.era1}/{eraOdds.era2}/{eraOdds.era3}/{eraOdds.era4}/
+          {eraOdds.era5}
+        </p>
+      ) : null}
       <ul className="shop-offers">
         {state.shop.offers.map((offer) => {
           const hue = offerHue(offer.kind, offer.defId);

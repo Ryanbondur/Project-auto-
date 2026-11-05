@@ -1,11 +1,13 @@
-import { getEraConfig } from "../content/eras";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
 export function StatsBar() {
   const state = useGameState();
-  const era = getEraConfig(state.currentEra);
+  const era =
+    state.metaApplied.eraThresholds.find((e) => e.era === state.currentEra) ??
+    state.metaApplied.eraThresholds[0]!;
   const slots = era.maxBoardSlots;
+  const shortEra = era.name.split("/")[0]?.trim() ?? era.name;
 
   return (
     <header className="stats-bar">
@@ -14,17 +16,17 @@ export function StatsBar() {
         <span className="stat-value">{state.gold}</span>
       </div>
       <div className="stat">
-        <span className="stat-label">Base HP</span>
+        <span className="stat-label">HP</span>
         <span className="stat-value">{state.baseHp}</span>
       </div>
       <div className="stat">
         <span className="stat-label">Wave</span>
         <span className="stat-value">{state.waveNumber}</span>
       </div>
-      <div className="stat">
+      <div className="stat stat-era">
         <span className="stat-label">Era</span>
         <span className="stat-value">
-          {state.currentEra} · {era.name}
+          {state.currentEra} · {shortEra}
         </span>
       </div>
       <div className="stat">
@@ -33,24 +35,15 @@ export function StatsBar() {
           {state.board.length}/{slots}
         </span>
       </div>
-      <div className="stat">
+      <div className="stat stat-phase">
         <span className="stat-label">Phase</span>
         <span className="stat-value phase">{state.phase}</span>
       </div>
       {state.lastPayout && (
-        <div className="stat">
-          <span className="stat-label">Last payout</span>
+        <div className="stat stat-optional">
+          <span className="stat-label">Payout</span>
           <span className="stat-value">
-            +{state.lastPayout.interest} int / +{state.lastPayout.income} inc
-          </span>
-        </div>
-      )}
-      {state.lastTileClick && (
-        <div className="stat tile-debug">
-          <span className="stat-label">Tile</span>
-          <span className="stat-value">
-            ({state.lastTileClick.x},{state.lastTileClick.y}){" "}
-            {state.lastTileClick.placeable ? "placeable" : "blocked"}
+            +{state.lastPayout.interest}/{state.lastPayout.income}
           </span>
         </div>
       )}
@@ -61,7 +54,7 @@ export function StatsBar() {
           onClick={() => gameStore.debugSetGold(state.gold + 5)}
           title="Debug"
         >
-          +5 gold
+          +5g
         </button>
         <button type="button" className="btn ghost" onClick={() => gameStore.resetRun()}>
           Reset

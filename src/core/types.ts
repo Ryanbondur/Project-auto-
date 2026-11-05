@@ -217,6 +217,12 @@ export type MapDef = {
   path: { x: number; y: number }[];
 };
 
+/** Active Era Discovery modal payload (ERA_FREEZE only). */
+export type EraDiscoveryState = {
+  newEra: 1 | 2 | 3 | 4 | 5;
+  choices: { defId: string; starLevel: 2 }[];
+};
+
 export type RunState = {
   phase: RunPhase;
   waveNumber: number;
@@ -237,6 +243,11 @@ export type RunState = {
   projectiles: Projectile[];
   /** Active wave spawn plan during AUTOBATTLE; null in prep. */
   waveRuntime: WaveRuntime | null;
+  /**
+   * Set while phase === ERA_FREEZE. Wave progress and shop are locked until
+   * the player picks one free 2★ from the newly unlocked era.
+   */
+  discovery: EraDiscoveryState | null;
   rngSeed: number;
   /** UI: selected unit for place / sell / socket. */
   selectedInstanceId: string | null;
