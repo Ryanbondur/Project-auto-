@@ -201,7 +201,8 @@ body {
   max-width: 100%;
   height: auto;
   cursor: crosshair;
-  image-rendering: pixelated;
+  /* Continuous creep/projectile motion — avoid pixelated nearest-neighbor. */
+  image-rendering: auto;
 }
 
 .board-hint {
@@ -322,4 +323,38 @@ body {
   align-items: center;
   gap: 0.35rem;
   margin-top: 0.35rem;
+}
+
+.sabotage-tray {
+  margin-top: 0.25rem;
+}
+
+.chip-row.selected {
+  outline: 1px solid var(--accent);
+}
+
+.defeat-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(8, 10, 16, 0.72);
+  z-index: 20;
+}
+
+.defeat-card {
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  padding: 1.25rem 1.5rem;
+  max-width: 360px;
+  text-align: center;
+}
+
+.defeat-card h2 {
+  margin: 0 0 0.5rem;
+}
+
+.defeat-card p {
+  margin: 0.35rem 0;
 }

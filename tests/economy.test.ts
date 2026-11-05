@@ -32,16 +32,17 @@ describe("interest defaults", () => {
   });
 });
 
-describe("prep Ready stub payout + shop refresh", () => {
-  it("adds interest+income, increments wave, refreshes 3 offers", () => {
+describe("wave complete income (Phase 3)", () => {
+  it("ready starts combat; completeWave pays interest+income and refreshes shop", () => {
     const store = createStore(createInitialRunState(99));
     store.debugSetGold(30);
     const before = store.getState();
     expect(before.shop.offers).toHaveLength(3);
-    const offersBefore = before.shop.offers.map((o) => o.defId).join(",");
 
-    const result = store.readyStub();
-    expect(result.ok).toBe(true);
+    expect(store.ready().ok).toBe(true);
+    expect(store.getState().phase).toBe("AUTOBATTLE");
+
+    expect(store.debugCompleteWave().ok).toBe(true);
     const after = store.getState();
     expect(after.waveNumber).toBe(before.waveNumber + 1);
     expect(after.wavesCleared).toBe(before.wavesCleared + 1);
@@ -49,8 +50,7 @@ describe("prep Ready stub payout + shop refresh", () => {
     expect(after.gold).toBe(30 + 3 + 5);
     expect(after.shop.offers).toHaveLength(3);
     expect(after.shop.offers.every((o) => !o.purchased)).toBe(true);
-    // Seed advanced — offers may or may not differ; at least shop object replaced
-    void offersBefore;
+    expect(after.phase).toBe("SHOP_PREP");
   });
 
   it("reroll costs 1g and refuses when broke", () => {

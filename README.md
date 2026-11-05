@@ -2,7 +2,7 @@
 
 Web autobattler tower defense: shop → merge/place → autobattle → era climb (Primitive → Cyber), with Commander meta between runs.
 
-**Art-last:** gameplay ships with placeholder visuals (colored rects / labels). No final art or audio in early phases.
+**Art-last:** gameplay ships with placeholder visuals (colored rects / labels). Draw adapters (`drawUnit` / `drawCreep` / `drawProjectile`) are thin skins over sim-owned world positions — permanent art should swap in without rewriting combat, pathing, economy, or state.
 
 ## Stack
 
@@ -13,11 +13,18 @@ Web autobattler tower defense: shop → merge/place → autobattle → era climb
 
 ## Phase status
 
-**Phase 2:** buy / reroll (1g) / sell, bench↔board with slot caps, pairwise auto-merge (same id + star → star+1, uncapped), star stat scaling, shop refresh each prep (Ready stub skips combat), buff-chip socket + pierce chip data hook, path-sabotage + commander-gambit stubs.
+**Phase 3:** pathing engine, creep waves, range + projectile autobattle, leak damage to base HP, endless runs (HP≤0 ends the run).
+
+- Creeps march continuously along the serpentine path (`pathIndex` + `pathT` sub-tile interpolation, dt-based).
+- Projectiles fly with continuous world positions; damage resolves on arrival (not hitscan).
+- `requestAnimationFrame` drives combat `tick(dt)` + redraw every frame.
+- Ready starts a wave; clear → +5 income + interest → prep with shop refresh.
+- Pairwise merge / shop / buff chips / gambits from Phase 2 kept working.
+- Path sabotage: Tar Slick slow (0.5×) wired; brief fork placement-only stub.
 
 Locked defaults: starting gold **10**, bench **5**, shop **3** offers, endless runs.
 
-Still stubbed for later: real combat/waves (P3), era discovery modal (P4), meta/XP/Codex (P5), art/audio.
+Still stubbed for later: era discovery modal (P4), meta/XP/Codex (P5), fork divert behaviour, most buff combat hooks beyond pierce/aoe ring, art/audio.
 
 ### Pairwise merge (not 3-of-a-kind)
 
