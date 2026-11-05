@@ -12,7 +12,7 @@ const MAX_STEPS_PER_FRAME = 5;
 /**
  * Canvas host: rAF drives combat with a fixed-timestep accumulator so creep
  * x/y and projectile pos stay frame-smooth. Canvas just presents sim state.
- * Prep phases redraw on store subscription only.
+ * Prep also rAF-paints so unit idle breath stays alive without store churn.
  */
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -22,15 +22,27 @@ export function GameCanvas() {
   const width = MAP.width * TILE_SIZE_PX;
   const height = MAP.height * TILE_SIZE_PX;
 
-  // Prep / defeat: paint when React state updates
+  // Prep / menus: idle paint loop (breath / select rings) from live store
   useEffect(() => {
     if (fighting) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
-    renderBoard(ctx, state);
-  }, [state, fighting]);
+
+    let raf = 0;
+    let alive = true;
+    const frame = (now: number) => {
+      if (!alive) return;
+      renderBoard(ctx, gameStore.getState(), now);
+      raf = requestAnimationFrame(frame);
+    };
+    raf = requestAnimationFrame(frame);
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+    };
+  }, [fighting]);
 
   // Autobattle: independent rAF loop (does not depend on React re-render rate)
   useEffect(() => {
@@ -62,7 +74,7 @@ export function GameCanvas() {
       if (steps >= MAX_STEPS_PER_FRAME) accumulator = 0;
 
       const snap = gameStore.getState();
-      renderBoard(ctx, snap);
+      renderBoard(ctx, snap, now);
       if (snap.phase === "AUTOBATTLE") {
         raf = requestAnimationFrame(frame);
       }

@@ -1,4 +1,5 @@
-import { getUnitDef, ERA_HUE } from "../content/units";
+import { eraColor } from "../canvas/theme";
+import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
@@ -18,7 +19,7 @@ export function BoardUnits() {
     <ul className="board-units">
       {state.board.map((unit) => {
         const def = getUnitDef(unit.defId);
-        const hue = def ? ERA_HUE[def.era] : 0;
+        const fill = def ? eraColor(def.era) : eraColor(1);
         const selected = state.selectedInstanceId === unit.instanceId;
         return (
           <li key={unit.instanceId} className={`board-unit${selected ? " selected" : ""}`}>
@@ -31,7 +32,7 @@ export function BoardUnits() {
             >
               <div
                 className="unit-swatch"
-                style={{ background: `hsl(${hue} 55% 42%)` }}
+                style={{ background: fill }}
               />
               <span>
                 {def?.name ?? unit.defId} {"★".repeat(Math.min(unit.starLevel, 8))} @ (

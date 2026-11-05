@@ -1,6 +1,7 @@
+import { eraColor, theme } from "../canvas/theme";
 import { getBuffChipDef } from "../content/buffChips";
 import { getPathSabotageDef } from "../content/pathSabotage";
-import { ERA_HUE, getUnitDef } from "../content/units";
+import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
@@ -23,13 +24,13 @@ function offerMeta(kind: string, defId: string): string {
   return def ? `Sabotage · ${def.kind}` : "Path sabotage";
 }
 
-function offerHue(kind: string, defId: string): number {
+function offerFill(kind: string, defId: string): string {
   if (kind === "unit") {
     const def = getUnitDef(defId);
-    return def ? ERA_HUE[def.era] : 0;
+    return def ? eraColor(def.era) : eraColor(1);
   }
-  if (kind === "buff_chip") return 160;
-  return 45;
+  if (kind === "buff_chip") return theme.cyanDim;
+  return theme.gold;
 }
 
 export function Shop() {
@@ -63,7 +64,7 @@ export function Shop() {
       ) : null}
       <ul className="shop-offers">
         {state.shop.offers.map((offer) => {
-          const hue = offerHue(offer.kind, offer.defId);
+          const fill = offerFill(offer.kind, offer.defId);
           const canBuy =
             canAct && !offer.purchased && state.gold >= offer.cost &&
             (offer.kind !== "unit" ||
@@ -75,7 +76,7 @@ export function Shop() {
             >
               <div
                 className="unit-swatch"
-                style={{ background: `hsl(${hue} 55% 42%)` }}
+                style={{ background: fill }}
                 aria-hidden
               />
               <div className="offer-body">

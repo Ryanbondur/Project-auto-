@@ -1,3 +1,4 @@
+import { eraColor } from "../canvas/theme";
 import { ERA_CONFIGS } from "../content/eras";
 import { buildCodexEntries, codexByEra } from "../meta/codex";
 import { useMeta } from "../ui/useMeta";
@@ -46,7 +47,7 @@ export function CodexScreen({ onBack }: CodexScreenProps) {
                       style={
                         unlocked
                           ? {
-                              background: `hsl(${def.era * 48}, 42%, 38%)`,
+                              background: eraColor(def.era),
                             }
                           : undefined
                       }

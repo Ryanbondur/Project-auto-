@@ -15,11 +15,11 @@ export function StatsBar({ onPause }: StatsBarProps) {
 
   return (
     <header className="stats-bar">
-      <div className="stat">
+      <div className="stat stat-gold">
         <span className="stat-label">Gold</span>
         <span className="stat-value">{state.gold}</span>
       </div>
-      <div className="stat">
+      <div className="stat stat-hp">
         <span className="stat-label">HP</span>
         <span className="stat-value">{state.baseHp}</span>
       </div>

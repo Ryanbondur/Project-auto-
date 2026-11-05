@@ -1,4 +1,5 @@
-import { getUnitDef, ERA_HUE } from "../content/units";
+import { eraColor } from "../canvas/theme";
+import { getUnitDef } from "../content/units";
 import { effectiveStats } from "../core/stats";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
@@ -26,7 +27,7 @@ export function Bench() {
       <ul className="bench-slots">
         {state.bench.map((unit) => {
           const def = getUnitDef(unit.defId);
-          const hue = def ? ERA_HUE[def.era] : 0;
+          const fill = def ? eraColor(def.era) : eraColor(1);
           const stats = effectiveStats(unit, state.metaApplied);
           const selected = state.selectedInstanceId === unit.instanceId;
           return (
@@ -43,7 +44,7 @@ export function Bench() {
               >
                 <div
                   className="unit-swatch"
-                  style={{ background: `hsl(${hue} 55% 42%)` }}
+                  style={{ background: fill }}
                 />
                 <div>
                   <div className="offer-name">
