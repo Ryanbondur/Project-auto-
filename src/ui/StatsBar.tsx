@@ -1,7 +1,11 @@
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
-export function StatsBar() {
+export type StatsBarProps = {
+  onPause?: () => void;
+};
+
+export function StatsBar({ onPause }: StatsBarProps) {
   const state = useGameState();
   const era =
     state.metaApplied.eraThresholds.find((e) => e.era === state.currentEra) ??
@@ -48,6 +52,16 @@ export function StatsBar() {
         </div>
       )}
       <div className="stat-actions">
+        {onPause && (
+          <button
+            type="button"
+            className="btn ghost"
+            onClick={onPause}
+            title="Pause run"
+          >
+            Pause
+          </button>
+        )}
         <button
           type="button"
           className="btn ghost"
@@ -55,9 +69,6 @@ export function StatsBar() {
           title="Debug"
         >
           +5g
-        </button>
-        <button type="button" className="btn ghost" onClick={() => gameStore.resetRun()}>
-          Reset
         </button>
       </div>
     </header>

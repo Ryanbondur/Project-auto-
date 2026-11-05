@@ -1,11 +1,5 @@
-import {
-  DEFAULT_BENCH_CAPACITY,
-  INTEREST_CAP_DEFAULT,
-  REROLL_COST,
-  STARTING_BASE_HP,
-  STARTING_GOLD,
-} from "./constants";
-import { ERA_CONFIGS, getEraConfig } from "../content/eras";
+import { REROLL_COST, STARTING_BASE_HP } from "./constants";
+import { getEraConfig } from "../content/eras";
 import { MAP, isPathTile, isPlaceableTile } from "../content/map";
 import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { getBuffChipDef } from "../content/buffChips";
@@ -22,22 +16,45 @@ import { createShopState } from "./shop";
 import { tickCombat } from "./combat";
 import { planWaveRuntime, spawnDueCreeps } from "./waves";
 import { nextTargetingMode } from "./targeting";
+import { buildMetaApplied } from "../meta/commander";
+import { metaStore, type MetaStore } from "../meta/metaStore";
 import type {
   BuffChipInstance,
   GambitId,
   PathSabotageInstance,
   RunState,
+  SkillId,
   UnitInstance,
 } from "./types";
 
 type Listener = () => void;
 
 let nextInstanceSeq = 1;
+/** Injectable for tests — production uses the singleton `metaStore`. */
+let metaApi: MetaStore = metaStore;
+
+/** Rebind meta persistence (tests). Pass nothing / metaStore to restore. */
+export function bindMetaStore(store: MetaStore = metaStore): void {
+  metaApi = store;
+}
 
 export function createInstanceId(prefix = "u"): string {
   const id = `${prefix}_${nextInstanceSeq}`;
   nextInstanceSeq += 1;
   return id;
+}
+
+export function getNextInstanceSeq(): number {
+  return nextInstanceSeq;
+}
+
+export function setNextInstanceSeq(seq: number): void {
+  nextInstanceSeq = Math.max(1, Math.floor(seq));
+}
+
+function revealShopUnits(offers: { kind: string; defId: string }[]): void {
+  const ids = offers.filter((o) => o.kind === "unit").map((o) => o.defId);
+  if (ids.length) metaApi.revealCodex(ids);
 }
 
 function makeUnit(defId: string, starLevel = 1, tile: UnitInstance["tile"] = null): UnitInstance {
@@ -66,14 +83,19 @@ function applyMerges(state: RunState): void {
   state.chipInventory = state.chips.filter((c) => c.socketedOnInstanceId === null);
 }
 
-export function createInitialRunState(seed = 42): RunState {
-  const era = getEraConfig(1);
+export function createInitialRunState(
+  seed = 42,
+  skills: SkillId[] = [],
+  options?: { skipCodexReveal?: boolean },
+): RunState {
+  const mods = buildMetaApplied(skills);
+  const era = mods.eraThresholds.find((e) => e.era === 1) ?? getEraConfig(1);
   const { shop, nextSeed } = createShopState(era, seed);
-  return {
+  const state: RunState = {
     phase: "SHOP_PREP",
     waveNumber: 1,
     wavesCleared: 0,
-    gold: STARTING_GOLD,
+    gold: mods.startingGold,
     baseHp: STARTING_BASE_HP,
     currentEra: 1,
     board: [],
@@ -91,15 +113,19 @@ export function createInitialRunState(seed = 42): RunState {
     selectedInstanceId: null,
     selectedSabotageId: null,
     metaApplied: {
-      interestCap: INTEREST_CAP_DEFAULT,
-      rangeMult: 1,
-      mergedAsBonus: 0,
-      benchCapacity: DEFAULT_BENCH_CAPACITY,
-      eraThresholds: ERA_CONFIGS.map((e) => ({ ...e, shopOdds: { ...e.shopOdds } })),
+      interestCap: mods.interestCap,
+      rangeMult: mods.rangeMult,
+      mergedAsBonus: mods.mergedAsBonus,
+      benchCapacity: mods.benchCapacity,
+      eraThresholds: mods.eraThresholds,
     },
     lastTileClick: null,
     lastPayout: null,
   };
+  if (!options?.skipCodexReveal) {
+    revealShopUnits(shop.offers);
+  }
+  return state;
 }
 
 function cloneRunState(state: RunState): RunState {
@@ -162,6 +188,7 @@ function afterWaveClear(next: RunState): void {
     next.phase = "ERA_FREEZE";
     next.selectedInstanceId = null;
     next.selectedSabotageId = null;
+    metaApi.revealCodex(rolled.choices.map((c) => c.defId));
     return;
   }
   next.discovery = null;
@@ -176,9 +203,15 @@ function refreshShopOn(next: RunState): void {
   const rolled = createShopState(era, next.rngSeed);
   next.shop = rolled.shop;
   next.rngSeed = rolled.nextSeed;
+  revealShopUnits(next.shop.offers);
 }
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
+
+export type DefeatSummary = {
+  wavesCleared: number;
+  xpGained: number;
+};
 
 export type GameStore = {
   getState: () => RunState;
@@ -204,18 +237,37 @@ export type GameStore = {
   tick: (dtMs: number) => void;
   /** Resolve Era Discovery: pick one free 2★ (choice index 0–2). */
   pickDiscovery: (choiceIndex: number) => ActionResult;
+  /**
+   * Start a new run with current owned skills. Replaces any paused run
+   * (only one active run allowed — design-decisions).
+   */
+  startNewRun: (seed?: number) => void;
+  /** Persist run to localStorage and leave combat paused (caller routes to menu). */
+  pauseActiveRun: () => void;
+  /** Resume the single paused run into this store. */
+  resumePausedRun: () => ActionResult;
+  /**
+   * Finalize defeat: award XP = wavesCleared × 15, clear active run.
+   * Call once when leaving the defeat screen.
+   */
+  acknowledgeDefeat: () => DefeatSummary;
+  /** Last defeat XP summary (UI). */
+  getLastDefeatSummary: () => DefeatSummary | null;
   debugSetGold: (gold: number) => void;
   /** Test helper: jump to a wave number (prep) without combat — for era tests. */
   debugSetWave: (waveNumber: number) => void;
   /** Test helper: force wave clear payout without simulating combat. */
   debugCompleteWave: () => ActionResult;
-  resetRun: (seed?: number) => void;
+  /** Reset in-memory run without touching meta (tests / debug). */
+  resetRun: (seed?: number, skills?: SkillId[]) => void;
 };
 
 export function createStore(initial?: RunState): GameStore {
   let state = initial ?? createInitialRunState();
   const listeners = new Set<Listener>();
   let lastHudEmitMs = 0;
+  let lastDefeatSummary: DefeatSummary | null = null;
+  let defeatAwarded = false;
 
   const emit = () => {
     for (const l of listeners) l();
@@ -224,6 +276,23 @@ export function createStore(initial?: RunState): GameStore {
   const setState = (next: RunState) => {
     state = next;
     emit();
+  };
+
+  const enterDefeat = (from: RunState) => {
+    const next = cloneRunState(from);
+    next.phase = "RUN_DEFEAT";
+    next.waveRuntime = null;
+    next.projectiles = [];
+      // Award XP immediately so refresh cannot lose the payout.
+    if (!defeatAwarded) {
+      const result = metaApi.endRun(next.wavesCleared);
+      lastDefeatSummary = {
+        wavesCleared: next.wavesCleared,
+        xpGained: result.xpGained,
+      };
+      defeatAwarded = true;
+    }
+    setState(next);
   };
 
   /** Cheap new snapshot ref so React HUD can refresh without deep clone. */
@@ -331,6 +400,7 @@ export function createStore(initial?: RunState): GameStore {
         offer.purchased = true;
         next.bench.push(makeUnit(def.id, 1, null));
         applyMerges(next);
+        metaApi.revealCodex([def.id]);
         setState(next);
         return { ok: true };
       }
@@ -491,11 +561,7 @@ export function createStore(initial?: RunState): GameStore {
       const result = tickCombat(state, dtMs, () => createInstanceId("p"));
 
       if (result.defeated) {
-        const next = cloneRunState(state);
-        next.phase = "RUN_DEFEAT";
-        next.waveRuntime = null;
-        next.projectiles = [];
-        setState(next);
+        enterDefeat(state);
         return;
       }
 
@@ -527,6 +593,7 @@ export function createStore(initial?: RunState): GameStore {
 
       const next = cloneRunState(state);
       const newEra = next.discovery!.newEra;
+      const offeredIds = next.discovery!.choices.map((c) => c.defId);
       // Unlock era pools / board slots / shop odds
       next.currentEra = newEra;
       next.discovery = null;
@@ -535,9 +602,50 @@ export function createStore(initial?: RunState): GameStore {
       applyMerges(next);
       refreshShopOn(next);
       next.phase = "SHOP_PREP";
+      metaApi.revealCodex(offeredIds);
       setState(next);
       return { ok: true };
     },
+
+    startNewRun: (seed) => {
+      metaApi.clearPausedRun();
+      nextInstanceSeq = 1;
+      defeatAwarded = false;
+      lastDefeatSummary = null;
+      const skills = metaApi.getMeta().unlockedSkills;
+      setState(createInitialRunState(seed ?? Date.now() % 1_000_000, skills));
+    },
+
+    pauseActiveRun: () => {
+      // Persist full snapshot; only one slot (overwrite). Canvas rAF stops when RunScreen unmounts.
+      if (state.phase === "RUN_DEFEAT") return;
+      saveSnapshotForPause();
+    },
+
+    resumePausedRun: () => {
+      const paused = metaApi.peekPausedRun();
+      if (!paused) return { ok: false, reason: "no_paused_run" };
+      nextInstanceSeq = paused.nextInstanceSeq;
+      defeatAwarded = false;
+      lastDefeatSummary = null;
+      setState(cloneRunState(paused.run));
+      // Keep saved copy until explicit clear on new run / defeat so refresh can re-resume.
+      return { ok: true };
+    },
+
+    acknowledgeDefeat: () => {
+      if (state.phase === "RUN_DEFEAT" && !defeatAwarded) {
+        const result = metaApi.endRun(state.wavesCleared);
+        lastDefeatSummary = {
+          wavesCleared: state.wavesCleared,
+          xpGained: result.xpGained,
+        };
+        defeatAwarded = true;
+      }
+      return lastDefeatSummary ?? { wavesCleared: 0, xpGained: 0 };
+    },
+
+    getLastDefeatSummary: () => lastDefeatSummary,
 
     debugSetGold: (gold) => {
       const next = cloneRunState(state);
@@ -566,11 +674,21 @@ export function createStore(initial?: RunState): GameStore {
       return { ok: true };
     },
 
-    resetRun: (seed) => {
+    resetRun: (seed, skills) => {
       nextInstanceSeq = 1;
-      setState(createInitialRunState(seed ?? 42));
+      defeatAwarded = false;
+      lastDefeatSummary = null;
+      setState(createInitialRunState(seed ?? 42, skills ?? []));
     },
   };
+
+  function saveSnapshotForPause(): void {
+    // If mid-fight, keep AUTOBATTLE so resume continues the wave; App simply stops ticking.
+    metaApi.pauseRun(cloneRunState(state), nextInstanceSeq);
+  }
 }
 
-export const gameStore = createStore();
+/** Idle boot state — no Codex pollution until the player starts a run. */
+export const gameStore = createStore(
+  createInitialRunState(42, [], { skipCodexReveal: true }),
+);

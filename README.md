@@ -10,19 +10,27 @@ Web autobattler tower defense: shop → merge/place → autobattle → era climb
 
 - Vite + TypeScript
 - HTML5 Canvas (board / combat)
-- Light React (shop, bench, stats, Era Discovery sheet)
+- Light React (menu, shop, bench, stats, Era Discovery, skills, Codex)
 - Pure `src/core/` game logic (no DOM)
+- `src/meta/` localStorage persistence
 
 ## Phase status
 
-**Phase 4:** era transition controller, era-weighted shop odds, free Level-2 Era Discovery modal.
+**Phase 5:** main menu, Commander XP, skill tree, Unit Codex, pause/resume (one active run).
 
-- Wave thresholds advance eras (1–10 → 2 at 11, … → 5 at 41).
-- On advance: `ERA_FREEZE` — wave progress + shop locked until the player picks 1 of 3 random **2★** units from the **newly unlocked** era (free, soft bench overflow).
-- Shop unit offers sample era via `shopOdds`, then uniform unit in that era; board slot caps bump with the unlocked era table.
-- Full 20-unit placeholder roster (4 per era).
+- Main menu → New run / Continue / Skills / Codex
+- Run end (HP ≤ 0): XP = `wavesCleared × 15` (endless — no wave-100 victory)
+- Skills persist in `localStorage` key `atd.meta.v1` and apply on **new** runs:
+  - Deep Pockets (+5 start gold → 15)
+  - Interest Rate Cap (cap 8)
+  - Master Mason (+15% range)
+  - Quick Assembly (+10% AS on merged / 2★+)
+  - Veterancy (era bands −1 wave)
+  - Reinforcements (bench 6)
+- Codex silhouettes until purchased or encountered (shop / discovery)
+- Pause saves the single active run to `atd.run.v1`; New run replaces it
 
-Still stubbed for Phase 5: main menu, meta XP / skill tree / Codex / `localStorage`, mid-run pause/resume, fork divert, most buff combat hooks, art/audio.
+Still stubbed (art-last): final sprites, era art, audio, juice; fork divert; most buff combat hooks.
 
 ### Pairwise merge (not 3-of-a-kind)
 
@@ -39,7 +47,7 @@ Two units with the same `defId` and `starLevel` combine into one at `starLevel +
 
 Sell: 100% for 1★; `floor(0.8 * 2^(star-1) * cost)` for merged (pairwise composition).
 
-Locked defaults: starting gold **10**, bench **5**, shop **3** offers, endless runs.
+Locked defaults: starting gold **10**, bench **5**, shop **3** offers, endless runs, pause/resume one active run.
 
 ## Run locally
 
@@ -58,4 +66,4 @@ npm test
 
 ## Layout
 
-See `src/` — `core/`, `content/`, `canvas/`, `ui/`, `app/` match the project architecture plan.
+See `src/` — `core/`, `content/`, `meta/`, `canvas/`, `ui/`, `app/` match the project architecture plan.
