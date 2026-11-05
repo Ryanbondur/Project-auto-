@@ -11,6 +11,10 @@ import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { getBuffChipDef } from "../content/buffChips";
 import { getPathSabotageDef } from "../content/pathSabotage";
 import { applyWavePayout, sellValue } from "./economy";
+import {
+  rollDiscoveryChoices,
+  shouldAdvanceEra,
+} from "./era";
 import { createGambitState, interestMultiplier, tryActivateGambit } from "./gambit";
 import { autoMergeChipsPairwise, autoMergePairwise } from "./merge";
 import { tryMoveToBench, tryPlaceOnBoard } from "./placement";
@@ -82,6 +86,7 @@ export function createInitialRunState(seed = 42): RunState {
     creeps: [],
     projectiles: [],
     waveRuntime: null,
+    discovery: null,
     rngSeed: nextSeed,
     selectedInstanceId: null,
     selectedSabotageId: null,
@@ -112,6 +117,10 @@ function assertPrep(state: RunState): boolean {
   return state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP";
 }
 
+/**
+ * Apply income/interest, bump wave counters, clear combat.
+ * Does NOT set phase — caller routes to ERA_FREEZE or SHOP_PREP.
+ */
 function completeWavePayout(next: RunState): void {
   const mult = interestMultiplier(next.gambit);
   const payout = applyWavePayout(next.gold, next.metaApplied.interestCap);
@@ -131,7 +140,42 @@ function completeWavePayout(next: RunState): void {
     u.cooldownMs = 0;
     u.currentTargetId = null;
   }
+}
+
+/**
+ * After payout: if next wave crosses an era threshold, freeze progress and
+ * open Era Discovery. Otherwise refresh shop and return to prep.
+ */
+function afterWaveClear(next: RunState): void {
+  completeWavePayout(next);
+  if (
+    shouldAdvanceEra(
+      next.currentEra,
+      next.waveNumber,
+      next.metaApplied.eraThresholds,
+    )
+  ) {
+    const newEra = (next.currentEra + 1) as 1 | 2 | 3 | 4 | 5;
+    const rolled = rollDiscoveryChoices(newEra, next.rngSeed);
+    next.discovery = { newEra, choices: rolled.choices };
+    next.rngSeed = rolled.nextSeed;
+    next.phase = "ERA_FREEZE";
+    next.selectedInstanceId = null;
+    next.selectedSabotageId = null;
+    return;
+  }
+  next.discovery = null;
   next.phase = "SHOP_PREP";
+  refreshShopOn(next);
+}
+
+function refreshShopOn(next: RunState): void {
+  const era =
+    next.metaApplied.eraThresholds.find((e) => e.era === next.currentEra) ??
+    getEraConfig(next.currentEra);
+  const rolled = createShopState(era, next.rngSeed);
+  next.shop = rolled.shop;
+  next.rngSeed = rolled.nextSeed;
 }
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -158,7 +202,11 @@ export type GameStore = {
   readyStub: () => ActionResult;
   /** Advance combat simulation by dtMs (driven by rAF). */
   tick: (dtMs: number) => void;
+  /** Resolve Era Discovery: pick one free 2★ (choice index 0–2). */
+  pickDiscovery: (choiceIndex: number) => ActionResult;
   debugSetGold: (gold: number) => void;
+  /** Test helper: jump to a wave number (prep) without combat — for era tests. */
+  debugSetWave: (waveNumber: number) => void;
   /** Test helper: force wave clear payout without simulating combat. */
   debugCompleteWave: () => ActionResult;
   resetRun: (seed?: number) => void;
@@ -182,15 +230,6 @@ export function createStore(initial?: RunState): GameStore {
   const emitHudSnapshot = () => {
     state = { ...state };
     emit();
-  };
-
-  const refreshShop = (next: RunState) => {
-    const era =
-      next.metaApplied.eraThresholds.find((e) => e.era === next.currentEra) ??
-      getEraConfig(next.currentEra);
-    const rolled = createShopState(era, next.rngSeed);
-    next.shop = rolled.shop;
-    next.rngSeed = rolled.nextSeed;
   };
 
   const startWave = (): ActionResult => {
@@ -344,7 +383,7 @@ export function createStore(initial?: RunState): GameStore {
       } else {
         next.gold -= REROLL_COST;
       }
-      refreshShop(next);
+      refreshShopOn(next);
       setState(next);
       return { ok: true };
     },
@@ -462,8 +501,7 @@ export function createStore(initial?: RunState): GameStore {
 
       if (result.waveComplete) {
         const next = cloneRunState(state);
-        completeWavePayout(next);
-        refreshShop(next);
+        afterWaveClear(next);
         setState(next);
         return;
       }
@@ -478,9 +516,43 @@ export function createStore(initial?: RunState): GameStore {
       }
     },
 
+    pickDiscovery: (choiceIndex) => {
+      if (state.phase !== "ERA_FREEZE" || !state.discovery) {
+        return { ok: false, reason: "wrong_phase" };
+      }
+      const choice = state.discovery.choices[choiceIndex];
+      if (!choice) return { ok: false, reason: "invalid_choice" };
+      const def = getUnitDef(choice.defId);
+      if (!def) return { ok: false, reason: "unknown_unit" };
+
+      const next = cloneRunState(state);
+      const newEra = next.discovery!.newEra;
+      // Unlock era pools / board slots / shop odds
+      next.currentEra = newEra;
+      next.discovery = null;
+      // Soft overflow if bench is full — still grant the free 2★
+      next.bench.push(makeUnit(def.id, choice.starLevel, null));
+      applyMerges(next);
+      refreshShopOn(next);
+      next.phase = "SHOP_PREP";
+      setState(next);
+      return { ok: true };
+    },
+
     debugSetGold: (gold) => {
       const next = cloneRunState(state);
       next.gold = Math.max(0, Math.floor(gold));
+      setState(next);
+    },
+
+    debugSetWave: (waveNumber) => {
+      const next = cloneRunState(state);
+      next.waveNumber = Math.max(1, Math.floor(waveNumber));
+      next.phase = "SHOP_PREP";
+      next.discovery = null;
+      next.creeps = [];
+      next.projectiles = [];
+      next.waveRuntime = null;
       setState(next);
     },
 
@@ -489,8 +561,7 @@ export function createStore(initial?: RunState): GameStore {
         return { ok: false, reason: "wrong_phase" };
       }
       const next = cloneRunState(state);
-      completeWavePayout(next);
-      refreshShop(next);
+      afterWaveClear(next);
       setState(next);
       return { ok: true };
     },

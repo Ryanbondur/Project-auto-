@@ -9,7 +9,8 @@ function unitsForEra(era: 1 | 2 | 3 | 4 | 5) {
   return UNIT_DEFS.filter((u) => u.era === era);
 }
 
-function pickWeightedEra(
+/** Pick an era bucket by shopOdds weights (zero-weight eras skipped). */
+export function pickWeightedEra(
   odds: EraConfig["shopOdds"],
   rand: () => number,
 ): 1 | 2 | 3 | 4 | 5 {
@@ -53,9 +54,9 @@ function pickUnitOffer(
 }
 
 /**
- * Roll shop offers. Phase 2: mostly units; ~15% chance a slot is a buff chip;
- * ~3% chance path sabotage (rare). Flat era-1 pool is fine until Phase 4 weighting
- * is playtested — still uses eraConfig.shopOdds when provided.
+ * Roll shop offers. Mostly units; ~15% chance a slot is a buff chip;
+ * ~3% chance path sabotage (rare). Unit offers sample era via shopOdds, then
+ * uniform unit among defs of that era.
  */
 export function rollShopOffers(
   eraConfig: EraConfig,
