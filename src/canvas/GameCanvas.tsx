@@ -1,4 +1,4 @@
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, type PointerEvent } from "react";
 import { TILE_SIZE_PX } from "../core/constants";
 import { MAP } from "../content/map";
 import { gameStore } from "../core/store";
@@ -13,6 +13,8 @@ const MAX_STEPS_PER_FRAME = 5;
  * Canvas host: rAF drives combat with a fixed-timestep accumulator so creep
  * x/y and projectile pos stay frame-smooth. Canvas just presents sim state.
  * Prep also rAF-paints so unit idle breath stays alive without store churn.
+ *
+ * Pointer events (not mouse-only) so iPhone Safari / standalone taps place units.
  */
 export function GameCanvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -87,7 +89,9 @@ export function GameCanvas() {
     };
   }, [fighting]);
 
-  const onClick = (e: MouseEvent<HTMLCanvasElement>) => {
+  const onPointerUp = (e: PointerEvent<HTMLCanvasElement>) => {
+    // Ignore multi-touch / secondary buttons; primary tap/click only.
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     const canvas = canvasRef.current;
     if (!canvas) return;
     const rect = canvas.getBoundingClientRect();
@@ -109,7 +113,7 @@ export function GameCanvas() {
         className="game-canvas"
         width={width}
         height={height}
-        onClick={onClick}
+        onPointerUp={onPointerUp}
         role="img"
         aria-label="Game board grid"
       />

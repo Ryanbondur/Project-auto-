@@ -56,9 +56,16 @@ body,
   height: 100%;
   min-height: 100%;
   min-height: 100dvh;
+  min-height: -webkit-fill-available;
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
+}
+
+html {
+  /* Kill rubber-band scroll that fights the game chrome on iOS. */
+  overscroll-behavior: none;
+  touch-action: manipulation;
 }
 
 body {
@@ -66,6 +73,28 @@ body {
     radial-gradient(ellipse 80% 40% at 50% -10%, rgba(46, 230, 255, 0.07) 0%, transparent 55%),
     var(--atd-bg-void);
   overscroll-behavior: none;
+  overflow: hidden;
+  /* iOS Safari: prefer dynamic viewport when available */
+  height: 100dvh;
+  height: -webkit-fill-available;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Home Screen / standalone PWA — full bleed under status bar */
+html.standalone body {
+  background:
+    radial-gradient(ellipse 90% 45% at 50% -8%, #142033 0%, transparent 55%),
+    #0a0e14;
+}
+
+@media (display-mode: standalone) {
+  body {
+    background:
+      radial-gradient(ellipse 90% 45% at 50% -8%, #142033 0%, transparent 55%),
+      #0a0e14;
+  }
 }
 
 .app {
