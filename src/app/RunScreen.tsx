@@ -10,16 +10,24 @@ import { Shop } from "../ui/Shop";
 import { StatsBar } from "../ui/StatsBar";
 import { useGameState } from "../ui/useGameState";
 
-export function RunScreen() {
+export type RunScreenProps = {
+  onPause: () => void;
+  onLeaveDefeat: () => void;
+};
+
+export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
   const state = useGameState();
   const frozen = state.phase === "ERA_FREEZE";
+  const defeated = state.phase === "RUN_DEFEAT";
   const canReady =
-    !frozen && (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP");
+    !frozen &&
+    !defeated &&
+    (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP");
   const fighting = state.phase === "AUTOBATTLE";
 
   return (
     <div className={`run-screen${frozen ? " frozen" : ""}`}>
-      <StatsBar />
+      <StatsBar onPause={defeated ? undefined : onPause} />
       <div className="play-area">
         <main className="board-column">
           <GameCanvas />
@@ -40,6 +48,16 @@ export function RunScreen() {
                   ? `Wave ${state.waveNumber}`
                   : "Start wave"}
             </span>
+            {!defeated && (
+              <button
+                type="button"
+                className="btn ghost pause-btn"
+                onClick={onPause}
+                title="Pause and return to menu — only one active run"
+              >
+                Pause
+              </button>
+            )}
           </div>
         </main>
       </div>
@@ -51,7 +69,7 @@ export function RunScreen() {
         <GambitPanel />
       </div>
       {state.phase === "ERA_FREEZE" && <EraDiscoveryModal />}
-      {state.phase === "RUN_DEFEAT" && <DefeatOverlay />}
+      {defeated && <DefeatOverlay onLeave={onLeaveDefeat} />}
     </div>
   );
 }
