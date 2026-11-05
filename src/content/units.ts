@@ -256,11 +256,14 @@ export function getUnitDef(id: string): UnitDef | undefined {
   return UNIT_DEFS.find((u) => u.id === id);
 }
 
-/** Era hue for placeholder rects (degrees on HSL). */
+/**
+ * Legacy HSL hue degrees — prefer `eraColor` from canvas/theme.ts for fills.
+ * Kept for any residual hsl() call sites during the skin transition.
+ */
 export const ERA_HUE: Record<1 | 2 | 3 | 4 | 5, number> = {
   1: 28,
-  2: 210,
-  3: 35,
-  4: 120,
-  5: 280,
+  2: 95,
+  3: 42,
+  4: 220,
+  5: 265,
 };

@@ -289,6 +289,11 @@ export type GameStore = {
    * inventory lifesteal chip, and placeable + placeable sabotage items.
    */
   debugSeedMechanicsDemo: () => ActionResult;
+  /**
+   * Debug / screenshot helper: several distinct era/role units on board
+   * for neon skin visual captures (path + silhouettes + select).
+   */
+  debugSeedNeonSkinDemo: () => ActionResult;
 };
 
 export function createStore(initial?: RunState): GameStore {
@@ -757,6 +762,35 @@ export function createStore(initial?: RunState): GameStore {
       };
       next.pathSabotages = [...next.pathSabotages, tar, flare];
       next.selectedSabotageId = flare.instanceId;
+      setState(next);
+      return { ok: true };
+    },
+
+    debugSeedNeonSkinDemo: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      next.gold = Math.max(next.gold, 40);
+      next.currentEra = 5;
+      // Distinct roles / eras / stars — placeable tiles off the serpentine path
+      const roster: { defId: string; star: number; tile: { x: number; y: number } }[] = [
+        { defId: "unit_spearman", star: 1, tile: { x: 1, y: 1 } },
+        { defId: "unit_archer", star: 2, tile: { x: 2, y: 3 } },
+        { defId: "unit_cannon", star: 2, tile: { x: 5, y: 5 } },
+        { defId: "unit_m16_soldier", star: 3, tile: { x: 8, y: 3 } },
+        { defId: "unit_rail_turret", star: 3, tile: { x: 11, y: 5 } },
+        { defId: "unit_drone_spotter", star: 1, tile: { x: 4, y: 1 } },
+        { defId: "unit_nano_swarm", star: 2, tile: { x: 9, y: 8 } },
+        { defId: "unit_shield_bot", star: 2, tile: { x: 12, y: 3 } },
+      ];
+      const boarded: UnitInstance[] = [];
+      for (const entry of roster) {
+        if (!isPlaceableTile(entry.tile.x, entry.tile.y)) continue;
+        boarded.push(makeUnit(entry.defId, entry.star, entry.tile));
+      }
+      next.board = boarded;
+      next.bench = [];
+      if (boarded[3]) next.selectedInstanceId = boarded[3]!.instanceId;
+      metaApi.revealCodex(roster.map((r) => r.defId));
       setState(next);
       return { ok: true };
     },

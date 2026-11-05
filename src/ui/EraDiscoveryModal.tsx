@@ -1,5 +1,6 @@
+import { eraColor } from "../canvas/theme";
 import { getEraConfig } from "../content/eras";
-import { ERA_HUE, getUnitDef } from "../content/units";
+import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
 import { useGameState } from "./useGameState";
 
@@ -12,7 +13,7 @@ export function EraDiscoveryModal() {
   if (state.phase !== "ERA_FREEZE" || !state.discovery) return null;
 
   const era = getEraConfig(state.discovery.newEra);
-  const hue = ERA_HUE[state.discovery.newEra];
+  const fill = eraColor(state.discovery.newEra);
 
   return (
     <div
@@ -25,7 +26,7 @@ export function EraDiscoveryModal() {
         <header className="era-sheet-header">
           <p className="era-kicker">Era unlocked</p>
           <h2>
-            <span className="era-swatch" style={{ background: `hsl(${hue} 55% 42%)` }} />
+            <span className="era-swatch" style={{ background: fill }} />
             {era.name}
           </h2>
           <p className="era-sub">
@@ -35,7 +36,7 @@ export function EraDiscoveryModal() {
         <ul className="era-choices">
           {state.discovery.choices.map((choice, index) => {
             const def = getUnitDef(choice.defId);
-            const choiceHue = def ? ERA_HUE[def.era] : hue;
+            const choiceFill = def ? eraColor(def.era) : fill;
             return (
               <li key={`${choice.defId}-${index}`}>
                 <button
@@ -45,7 +46,7 @@ export function EraDiscoveryModal() {
                 >
                   <span
                     className="unit-swatch era-choice-swatch"
-                    style={{ background: `hsl(${choiceHue} 55% 42%)` }}
+                    style={{ background: choiceFill }}
                     aria-hidden
                   />
                   <span className="era-choice-body">
