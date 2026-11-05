@@ -49,11 +49,21 @@ Sell: 100% for 1★; `floor(0.8 * 2^(star-1) * cost)` for merged (pairwise compo
 
 Locked defaults: starting gold **10**, bench **5**, shop **3** offers, endless runs, pause/resume one active run.
 
+## iPhone / PWA (App Store–free install)
+
+Installable as a Home Screen app from Safari (standalone, icons, cached shell). Progress: `localStorage` keys `atd.meta.v1` (meta) and `atd.run.v1` (one active run) — **per device**, not synced.
+
+- Playtest steps + deploy options: see PR notes and project doc `iphone-playtest.md`
+- Prefer **HTTPS** (Vercel / Netlify / GitHub Pages) for reliable Add to Home Screen
+- LAN: `npm run dev:lan` → open `http://<mac-ip>:5173` on the phone (tab playtest; HTTP install is flaky)
+
 ## Run locally
 
 ```bash
 npm install
 npm run dev
+# same Wi‑Fi playtest:
+npm run dev:lan
 ```
 
 Other scripts:
@@ -61,8 +71,10 @@ Other scripts:
 ```bash
 npm run typecheck
 npm run build
+npm run preview
 npm test
 ```
+
 
 ## Layout
 

@@ -1,5 +1,18 @@
 import type { MetaState, RunState, SkillId } from "../core/types";
 
+/**
+ * Persistence uses the standard `localStorage` API — works in desktop browsers,
+ * Mobile Safari tabs, and iOS Home Screen / standalone PWAs.
+ *
+ * Progress is **per device + per browser profile** (and typically per Home Screen
+ * web app origin). It does not sync across phones or between Safari tabs and a
+ * separately installed Home Screen icon on older iOS; treat the Home Screen app
+ * as the canonical playtest install once added.
+ *
+ * Private browsing / storage quota failures are swallowed so the session still
+ * runs in memory for that launch.
+ */
+
 /** localStorage key for Commander meta (architecture §8). */
 export const META_STORAGE_KEY = "atd.meta.v1";
 
