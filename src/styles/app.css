@@ -1,0 +1,260 @@
+:root {
+  color-scheme: dark;
+  --bg: #12151c;
+  --bg-elev: #1a1f2a;
+  --bg-panel: #1e2430;
+  --border: #2c3444;
+  --text: #e8e6e0;
+  --muted: #9aa3b5;
+  --accent: #5b8def;
+  --accent-dim: #3a5a9a;
+  --danger: #c45c4a;
+  --ok: #6b8f71;
+  --font: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+}
+
+body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, #1c2740 0%, transparent 55%),
+    var(--bg);
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.run-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem 1.25rem;
+  max-width: 1280px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.stats-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem 1.25rem;
+  padding: 0.65rem 0.9rem;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 4.5rem;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.stat-value {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+}
+
+.stat-value.phase {
+  font-size: 0.8rem;
+  color: var(--accent);
+}
+
+.stat-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 0.4rem;
+}
+
+.run-body {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .run-body {
+    grid-template-columns: 1fr;
+  }
+}
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  padding: 0.75rem;
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.6rem;
+}
+
+.panel-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.shop-offers,
+.bench-slots {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.bench-slots {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+.shop-offer,
+.bench-slot {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.45rem 0.5rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+}
+
+.bench-slot {
+  min-width: 140px;
+  flex: 1 1 140px;
+}
+
+.bench-slot.empty {
+  color: var(--muted);
+  justify-content: center;
+  font-size: 0.85rem;
+  border-style: dashed;
+}
+
+.unit-swatch {
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.offer-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.offer-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.offer-meta {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+.board-column {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.board-wrap {
+  overflow: auto;
+  border: 1px solid var(--border);
+  background: #0d1016;
+  padding: 0.5rem;
+}
+
+.game-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  cursor: crosshair;
+  image-rendering: pixelated;
+}
+
+.board-hint {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.ready-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.btn {
+  font: inherit;
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elev);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn.primary {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+}
+
+.btn.buy {
+  font-family: var(--mono);
+  min-width: 3.2rem;
+}
+
+.btn.ghost {
+  background: transparent;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stub-note {
+  margin: 0.55rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+}
