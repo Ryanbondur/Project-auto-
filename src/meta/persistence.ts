@@ -118,6 +118,13 @@ function normalizeLoadedRun(run: RunState): RunState {
     if (typeof p.lifestealFraction !== "number") {
       p.lifestealFraction = 0;
     }
+    if (typeof p.sourceUnitId !== "string") {
+      p.sourceUnitId = "";
+    }
+  }
+  for (const u of [...(run.board ?? []), ...(run.bench ?? [])]) {
+    if (typeof u.damageDealtWave !== "number") u.damageDealtWave = 0;
+    if (typeof u.damageDealtRun !== "number") u.damageDealtRun = 0;
   }
   if (typeof run.healPulseCooldownMs !== "number") {
     run.healPulseCooldownMs = 4000;

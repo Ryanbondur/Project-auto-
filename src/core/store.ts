@@ -20,6 +20,7 @@ import { autoMergeChipsPairwise, autoMergePairwise } from "./merge";
 import { tryMoveToBench, tryPlaceOnBoard } from "./placement";
 import { createShopState } from "./shop";
 import { tickCombat } from "./combat";
+import { resetWaveDamage } from "./damageStats";
 import { planWaveRuntime, spawnDueCreeps } from "./waves";
 import { nextTargetingMode } from "./targeting";
 import { buildMetaApplied } from "../meta/commander";
@@ -74,6 +75,8 @@ function makeUnit(defId: string, starLevel = 1, tile: UnitInstance["tile"] = nul
     currentTargetId: null,
     chipInstanceIds: [],
     fromMerge: false,
+    damageDealtWave: 0,
+    damageDealtRun: 0,
   };
 }
 
@@ -350,6 +353,8 @@ export function createStore(initial?: RunState): GameStore {
       u.cooldownMs = 0;
       u.currentTargetId = null;
     }
+    resetWaveDamage(next.board);
+    resetWaveDamage(next.bench);
     setState(next);
     return { ok: true };
   };

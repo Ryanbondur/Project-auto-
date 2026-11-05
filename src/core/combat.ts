@@ -22,6 +22,7 @@ import {
   sabotageDivertOffset,
   sabotageSpeedMult,
 } from "./pathing";
+import { attributeDamage } from "./damageStats";
 import { applyLeak } from "./leak";
 import { selectTarget } from "./targeting";
 import { effectiveStats } from "./stats";
@@ -169,6 +170,9 @@ export function advanceProjectiles(state: RunState, dtMs: number): void {
 
     if (p.progress >= 1) {
       const dealt = resolveProjectileHit(state, p);
+      if (dealt > 0) {
+        attributeDamage(state.board, p.sourceUnitId, dealt);
+      }
       if (p.lifestealFraction > 0 && dealt > 0) {
         healBase(state, Math.floor(dealt * p.lifestealFraction));
       }
@@ -194,6 +198,7 @@ function spawnProjectile(
   const aim = { x: wp.x + 0.5, y: wp.y + 0.5 };
   return {
     id: nextId(),
+    sourceUnitId: unit.instanceId,
     from: { ...from },
     pos: { ...from },
     aim,
