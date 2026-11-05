@@ -3,7 +3,8 @@ import type { PathSabotageDef } from "../core/types";
 /**
  * Path sabotage items — rare board items that slow a path segment or briefly
  * fork/divert creeps. Placement must stay legal (not path-blocking towers).
- * TODO(Phase 3): apply slow / fork during creep pathing ticks.
+ * slow_segment: wired via sabotageSpeedMult in pathing (0.5× on nearby segments).
+ * brief_fork: placement works; divert behaviour still stubbed for Phase 4+.
  */
 export const PATH_SABOTAGE_DEFS: PathSabotageDef[] = [
   {

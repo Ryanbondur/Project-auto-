@@ -5,6 +5,8 @@ import { useGameState } from "./useGameState";
 export function BoardUnits() {
   const state = useGameState();
   const canAct = state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP";
+  // Targeting can be cycled anytime including during fight for feel.
+  const canCycle = state.phase !== "RUN_DEFEAT";
 
   if (state.board.length === 0) {
     return (
@@ -33,8 +35,17 @@ export function BoardUnits() {
               />
               <span>
                 {def?.name ?? unit.defId} {"★".repeat(Math.min(unit.starLevel, 8))} @ (
-                {unit.tile?.x},{unit.tile?.y})
+                {unit.tile?.x},{unit.tile?.y}) · {unit.targeting}
               </span>
+            </button>
+            <button
+              type="button"
+              className="btn ghost"
+              disabled={!canCycle}
+              onClick={() => gameStore.cycleTargeting(unit.instanceId)}
+              title="Cycle targeting: First / Last / Strongest / Lowest HP / AOE Cluster"
+            >
+              Target
             </button>
             <button
               type="button"

@@ -6,7 +6,7 @@ import {
   STARTING_GOLD,
 } from "./constants";
 import { ERA_CONFIGS, getEraConfig } from "../content/eras";
-import { isPlaceableTile } from "../content/map";
+import { MAP, isPathTile, isPlaceableTile } from "../content/map";
 import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { getBuffChipDef } from "../content/buffChips";
 import { getPathSabotageDef } from "../content/pathSabotage";
@@ -15,6 +15,9 @@ import { createGambitState, interestMultiplier, tryActivateGambit } from "./gamb
 import { autoMergeChipsPairwise, autoMergePairwise } from "./merge";
 import { tryMoveToBench, tryPlaceOnBoard } from "./placement";
 import { createShopState } from "./shop";
+import { tickCombat } from "./combat";
+import { planWaveRuntime, spawnDueCreeps } from "./waves";
+import { nextTargetingMode } from "./targeting";
 import type {
   BuffChipInstance,
   GambitId,
@@ -78,8 +81,10 @@ export function createInitialRunState(seed = 42): RunState {
     gambit: createGambitState(),
     creeps: [],
     projectiles: [],
+    waveRuntime: null,
     rngSeed: nextSeed,
     selectedInstanceId: null,
+    selectedSabotageId: null,
     metaApplied: {
       interestCap: INTEREST_CAP_DEFAULT,
       rangeMult: 1,
@@ -107,6 +112,28 @@ function assertPrep(state: RunState): boolean {
   return state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP";
 }
 
+function completeWavePayout(next: RunState): void {
+  const mult = interestMultiplier(next.gambit);
+  const payout = applyWavePayout(next.gold, next.metaApplied.interestCap);
+  const interest = payout.interest * mult;
+  next.gold = next.gold + interest + payout.income;
+  next.lastPayout = { interest, income: payout.income };
+  next.wavesCleared += 1;
+  next.waveNumber += 1;
+  if (next.gambit.activeGambit === "double_interest") {
+    next.gambit.activeGambit = null;
+  }
+  next.creeps = [];
+  next.projectiles = [];
+  next.waveRuntime = null;
+  // Reset combat cooldowns for next wave
+  for (const u of next.board) {
+    u.cooldownMs = 0;
+    u.currentTargetId = null;
+  }
+  next.phase = "SHOP_PREP";
+}
+
 export type ActionResult = { ok: true } | { ok: false; reason: string };
 
 export type GameStore = {
@@ -114,21 +141,33 @@ export type GameStore = {
   subscribe: (listener: Listener) => () => void;
   clickTile: (x: number, y: number) => void;
   selectUnit: (instanceId: string | null) => void;
+  selectSabotage: (instanceId: string | null) => void;
   buyOffer: (slotIndex: number) => ActionResult;
   rerollShop: () => ActionResult;
   sellUnit: (instanceId: string) => ActionResult;
   moveToBench: (instanceId: string) => ActionResult;
   socketChip: (chipInstanceId: string, unitInstanceId: string) => ActionResult;
   activateGambit: (gambitId: GambitId) => ActionResult;
-  /** Prep-only Ready stub: payout + wave++ + shop refresh (combat Phase 3). */
+  cycleTargeting: (instanceId: string) => ActionResult;
+  /** Start autobattle for the current wave. */
+  ready: () => ActionResult;
+  /**
+   * @deprecated Phase 2 prep-only alias — prefer `ready` (starts combat).
+   * Kept so older tests calling readyStub still compile; routes to ready().
+   */
   readyStub: () => ActionResult;
+  /** Advance combat simulation by dtMs (driven by rAF). */
+  tick: (dtMs: number) => void;
   debugSetGold: (gold: number) => void;
+  /** Test helper: force wave clear payout without simulating combat. */
+  debugCompleteWave: () => ActionResult;
   resetRun: (seed?: number) => void;
 };
 
 export function createStore(initial?: RunState): GameStore {
   let state = initial ?? createInitialRunState();
   const listeners = new Set<Listener>();
+  let lastHudEmitMs = 0;
 
   const emit = () => {
     for (const l of listeners) l();
@@ -136,6 +175,12 @@ export function createStore(initial?: RunState): GameStore {
 
   const setState = (next: RunState) => {
     state = next;
+    emit();
+  };
+
+  /** Cheap new snapshot ref so React HUD can refresh without deep clone. */
+  const emitHudSnapshot = () => {
+    state = { ...state };
     emit();
   };
 
@@ -148,6 +193,23 @@ export function createStore(initial?: RunState): GameStore {
     next.rngSeed = rolled.nextSeed;
   };
 
+  const startWave = (): ActionResult => {
+    if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+    const next = cloneRunState(state);
+    next.phase = "AUTOBATTLE";
+    next.creeps = [];
+    next.projectiles = [];
+    next.waveRuntime = planWaveRuntime(next.waveNumber);
+    next.selectedInstanceId = null;
+    next.selectedSabotageId = null;
+    for (const u of next.board) {
+      u.cooldownMs = 0;
+      u.currentTargetId = null;
+    }
+    setState(next);
+    return { ok: true };
+  };
+
   return {
     getState: () => state,
     subscribe: (listener) => {
@@ -158,6 +220,14 @@ export function createStore(initial?: RunState): GameStore {
     selectUnit: (instanceId) => {
       const next = cloneRunState(state);
       next.selectedInstanceId = instanceId;
+      next.selectedSabotageId = null;
+      setState(next);
+    },
+
+    selectSabotage: (instanceId) => {
+      const next = cloneRunState(state);
+      next.selectedSabotageId = instanceId;
+      next.selectedInstanceId = null;
       setState(next);
     },
 
@@ -167,11 +237,23 @@ export function createStore(initial?: RunState): GameStore {
       const next = cloneRunState(state);
       next.lastTileClick = { x, y, placeable };
 
-      if (
-        assertPrep(next) &&
-        next.selectedInstanceId &&
-        placeable
-      ) {
+      if (assertPrep(next) && next.selectedSabotageId && isPathTile(x, y)) {
+        const item = next.pathSabotages.find(
+          (s) => s.instanceId === next.selectedSabotageId,
+        );
+        if (item && !item.placed) {
+          const idx = MAP.path.findIndex((p) => p.x === x && p.y === y);
+          if (idx >= 0) {
+            item.pathIndex = idx;
+            item.placed = true;
+            next.selectedSabotageId = null;
+          }
+        }
+        setState(next);
+        return;
+      }
+
+      if (assertPrep(next) && next.selectedInstanceId && placeable) {
         const era =
           next.metaApplied.eraThresholds.find((e) => e.era === next.currentEra) ??
           getEraConfig(next.currentEra);
@@ -243,7 +325,6 @@ export function createStore(initial?: RunState): GameStore {
           placed: false,
         };
         next.pathSabotages.push(item);
-        // TODO: placement UX onto a path segment without blocking.
         setState(next);
         return { ok: true };
       }
@@ -285,7 +366,6 @@ export function createStore(initial?: RunState): GameStore {
       const def = getUnitDef(unit.defId);
       if (!def) return { ok: false, reason: "unknown_unit" };
 
-      // Detach chips back to inventory
       for (const chipId of unit.chipInstanceIds) {
         const chip = next.chips.find((c) => c.instanceId === chipId);
         if (chip) chip.socketedOnInstanceId = null;
@@ -326,7 +406,6 @@ export function createStore(initial?: RunState): GameStore {
       const unit = findUnit(next, unitInstanceId);
       if (!unit) return { ok: false, reason: "unit_not_found" };
 
-      // Pierce chip is the one "working" socket path; others still socket as data.
       chip.socketedOnInstanceId = unit.instanceId;
       unit.chipInstanceIds = [...unit.chipInstanceIds, chip.instanceId];
       next.chipInventory = next.chips.filter((c) => c.socketedOnInstanceId === null);
@@ -340,7 +419,6 @@ export function createStore(initial?: RunState): GameStore {
       const next = cloneRunState(state);
       Object.assign(next, result.state);
       if (gambitId === "random_higher_unit") {
-        // Grant a random unit at 2★ onto bench (soft-overflow ok during gambit).
         const def = UNIT_DEFS[next.rngSeed % UNIT_DEFS.length] ?? UNIT_DEFS[0];
         if (def) {
           next.bench.push(makeUnit(def.id, 2, null));
@@ -348,38 +426,73 @@ export function createStore(initial?: RunState): GameStore {
         }
         next.rngSeed = (next.rngSeed + 17) >>> 0;
       }
-      if (gambitId === "double_interest") {
-        // Flag only — interestMultiplier reads gambit on payout.
-      }
       setState(next);
       return { ok: true };
     },
 
-    readyStub: () => {
-      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+    cycleTargeting: (instanceId) => {
       const next = cloneRunState(state);
-      // Phase 2 prep-only loop: skip AUTOBATTLE, apply payout as if wave cleared.
-      const mult = interestMultiplier(next.gambit);
-      const payout = applyWavePayout(next.gold, next.metaApplied.interestCap);
-      const interest = payout.interest * mult;
-      next.gold = next.gold + interest + payout.income;
-      next.lastPayout = { interest, income: payout.income };
-      next.wavesCleared += 1;
-      next.waveNumber += 1;
-      // Clear one-wave gambit effects after payout
-      if (next.gambit.activeGambit === "double_interest") {
-        next.gambit.activeGambit = null;
-      }
-      refreshShop(next);
-      next.phase = "SHOP_PREP";
+      const unit = findUnit(next, instanceId);
+      if (!unit) return { ok: false, reason: "unit_not_found" };
+      unit.targeting = nextTargetingMode(unit.targeting);
       setState(next);
       return { ok: true };
+    },
+
+    ready: () => startWave(),
+    readyStub: () => startWave(),
+
+    tick: (dtMs) => {
+      if (state.phase !== "AUTOBATTLE") return;
+      if (!state.waveRuntime) return;
+
+      // Hot path: mutate in place so canvas rAF stays smooth without
+      // structuredClone every frame. React only needs a new snapshot on phase change.
+      spawnDueCreeps(state.waveRuntime, state.creeps, () => createInstanceId("e"), dtMs);
+      const result = tickCombat(state, dtMs, () => createInstanceId("p"));
+
+      if (result.defeated) {
+        const next = cloneRunState(state);
+        next.phase = "RUN_DEFEAT";
+        next.waveRuntime = null;
+        next.projectiles = [];
+        setState(next);
+        return;
+      }
+
+      if (result.waveComplete) {
+        const next = cloneRunState(state);
+        completeWavePayout(next);
+        refreshShop(next);
+        setState(next);
+        return;
+      }
+
+      // Canvas reads getState() inside rAF (no React needed).
+      // Throttle shallow snapshots ~10Hz so Base HP / phase HUD stay live.
+      const now =
+        typeof performance !== "undefined" ? performance.now() : Date.now();
+      if (now - lastHudEmitMs >= 100) {
+        lastHudEmitMs = now;
+        emitHudSnapshot();
+      }
     },
 
     debugSetGold: (gold) => {
       const next = cloneRunState(state);
       next.gold = Math.max(0, Math.floor(gold));
       setState(next);
+    },
+
+    debugCompleteWave: () => {
+      if (state.phase !== "AUTOBATTLE" && !assertPrep(state)) {
+        return { ok: false, reason: "wrong_phase" };
+      }
+      const next = cloneRunState(state);
+      completeWavePayout(next);
+      refreshShop(next);
+      setState(next);
+      return { ok: true };
     },
 
     resetRun: (seed) => {

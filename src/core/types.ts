@@ -47,10 +47,8 @@ export type BuffChipInstance = {
 };
 
 /**
- * Path sabotage board item stub.
- * Rare items that slow a path segment or briefly fork/divert creeps.
- * Must stay placement-legal (not path-blocking towers).
- * TODO(Phase 3+): wire combat slow / fork behaviour.
+ * Path sabotage board item.
+ * Slow segments affect creep speed in pathing; brief_fork remains a placement stub.
  */
 export type PathSabotageDef = {
   id: string;
@@ -115,12 +113,25 @@ export type CreepInstance = {
   hp: number;
   pathIndex: number;
   pathT: number;
+  /**
+   * Continuous world position in tile units (path centers).
+   * Owned by the sim — renderer must use these, never invent grid snaps.
+   */
+  x: number;
+  y: number;
   alive: boolean;
 };
 
 export type WaveDef = {
   waveNumber: number;
   entries: { creepId: string; count: number; spawnDelayMs: number }[];
+};
+
+/** Runtime spawn queue for the active autobattle wave. */
+export type WaveRuntime = {
+  spawnQueue: { creepId: string; spawnAtMs: number }[];
+  elapsedMs: number;
+  allSpawned: boolean;
 };
 
 export type EraConfig = {
@@ -160,13 +171,29 @@ export type RunPhase =
   | "RUN_DEFEAT"
   | "RUN_VICTORY";
 
+/**
+ * In-flight projectile with continuous world position.
+ * Visuals lerp/move each frame; damage applies only on arrival (progress >= 1).
+ */
 export type Projectile = {
   id: string;
+  /** Launch point (tile units, centers). */
   from: { x: number; y: number };
+  /** Current interpolated position (tile units). */
+  pos: { x: number; y: number };
+  /** Last known aim point (updated each frame toward live creep). */
+  aim: { x: number; y: number };
   toCreepId: string;
   damage: number;
   aoeRadius: number;
-  ttlMs: number;
+  /** Flight speed in tiles per second. */
+  speed: number;
+  /** 0..1 along current from→aim segment; resets when aim retargets gently via pos. */
+  progress: number;
+  /** Extra pierce targets to hit on impact. */
+  pierceExtra: number;
+  /** Optional arc height in tiles (visual loft). */
+  arcHeight: number;
 };
 
 export type SkillId =
@@ -208,9 +235,13 @@ export type RunState = {
   gambit: CommanderGambitState;
   creeps: CreepInstance[];
   projectiles: Projectile[];
+  /** Active wave spawn plan during AUTOBATTLE; null in prep. */
+  waveRuntime: WaveRuntime | null;
   rngSeed: number;
   /** UI: selected unit for place / sell / socket. */
   selectedInstanceId: string | null;
+  /** UI: selected unplaced path sabotage item. */
+  selectedSabotageId: string | null;
   metaApplied: {
     interestCap: number;
     rangeMult: number;
