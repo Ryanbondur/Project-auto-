@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInitialRunState, createStore } from "../src/core/store";
-import { STARTING_BASE_HP } from "../src/core/constants";
+import { STARTING_BASE_HP, WAVE_INCOME } from "../src/core/constants";
 
 describe("wave Ready → combat → income", () => {
   it("ready enters AUTOBATTLE with a spawn plan", () => {
@@ -21,8 +21,8 @@ describe("wave Ready → combat → income", () => {
     expect(after.phase).toBe("SHOP_PREP");
     expect(after.waveNumber).toBe(2);
     expect(after.wavesCleared).toBe(1);
-    expect(after.lastPayout).toEqual({ interest: 3, income: 5 });
-    expect(after.gold).toBe(30 + 3 + 5);
+    expect(after.lastPayout).toEqual({ interest: 3, income: WAVE_INCOME });
+    expect(after.gold).toBe(30 + 3 + WAVE_INCOME);
     expect(after.shop.offers).toHaveLength(3);
     expect(after.creeps).toHaveLength(0);
   });

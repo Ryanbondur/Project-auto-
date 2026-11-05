@@ -23,12 +23,12 @@ describe("interest defaults", () => {
     expect(calcInterest(70, INTEREST_CAP_SKILL)).toBe(7);
   });
 
-  it("applies interest before +5 income", () => {
+  it("applies interest before wave income", () => {
     const payout = applyWavePayout(25, INTEREST_CAP_DEFAULT);
     expect(payout.interest).toBe(2);
     expect(payout.income).toBe(WAVE_INCOME);
-    expect(payout.goldAfter).toBe(25 + 2 + 5);
-    expect(waveIncome()).toBe(5);
+    expect(payout.goldAfter).toBe(25 + 2 + WAVE_INCOME);
+    expect(waveIncome()).toBe(WAVE_INCOME);
   });
 });
 
@@ -46,8 +46,8 @@ describe("wave complete income (Phase 3)", () => {
     const after = store.getState();
     expect(after.waveNumber).toBe(before.waveNumber + 1);
     expect(after.wavesCleared).toBe(before.wavesCleared + 1);
-    expect(after.lastPayout).toEqual({ interest: 3, income: 5 });
-    expect(after.gold).toBe(30 + 3 + 5);
+    expect(after.lastPayout).toEqual({ interest: 3, income: WAVE_INCOME });
+    expect(after.gold).toBe(30 + 3 + WAVE_INCOME);
     expect(after.shop.offers).toHaveLength(3);
     expect(after.shop.offers.every((o) => !o.purchased)).toBe(true);
     expect(after.phase).toBe("SHOP_PREP");

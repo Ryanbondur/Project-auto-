@@ -131,11 +131,6 @@ export function Shop() {
           </ul>
         </div>
       )}
-      {state.pathSabotages.some((s) => !s.placed) && (
-        <p className="stub-note">
-          Path sabotage owned (unplaced) — placement UX TODO.
-        </p>
-      )}
     </aside>
   );
 }

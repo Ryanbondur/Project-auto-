@@ -84,6 +84,34 @@ export function saveMeta(
   }
 }
 
+/** Backfill fields added after Phase 5 so older paused runs still resume. */
+function normalizeLoadedRun(run: RunState): RunState {
+  const gambit = run.gambit ?? {
+    usesSpent: 0,
+    usedThisRun: false,
+    activeGambit: null,
+    freeRerollsRemaining: 0,
+  };
+  if (typeof gambit.usesSpent !== "number") {
+    gambit.usesSpent = gambit.usedThisRun ? 1 : 0;
+  }
+  gambit.usedThisRun = gambit.usesSpent > 0 || Boolean(gambit.usedThisRun);
+  for (const creep of run.creeps ?? []) {
+    if (typeof creep.maxHp !== "number" || creep.maxHp <= 0) {
+      creep.maxHp = Math.max(1, creep.hp);
+    }
+  }
+  for (const p of run.projectiles ?? []) {
+    if (typeof p.lifestealFraction !== "number") {
+      p.lifestealFraction = 0;
+    }
+  }
+  if (typeof run.healPulseCooldownMs !== "number") {
+    run.healPulseCooldownMs = 4000;
+  }
+  return { ...run, gambit };
+}
+
 export function loadActiveRun(
   storage: Pick<Storage, "getItem"> | null = defaultStorage(),
 ): PersistedActiveRunV1 | null {
@@ -103,7 +131,7 @@ export function loadActiveRun(
     }
     return {
       version: 1,
-      run: parsed.run,
+      run: normalizeLoadedRun(parsed.run),
       nextInstanceSeq: Math.max(1, Math.floor(parsed.nextInstanceSeq)),
     };
   } catch {

@@ -1,6 +1,11 @@
 import { MAP } from "../content/map";
 import { getCreepDef } from "../content/creeps";
-import { buildWaveDef } from "../content/waves";
+import { buildWaveDef, waveHpMultiplier } from "../content/waves";
+import {
+  WAVE_HP_ENDLESS_START,
+  WAVE_HP_SCALE_ENDLESS_EXTRA,
+  WAVE_HP_SCALE_PER_WAVE,
+} from "./constants";
 import type { CreepInstance, WaveRuntime } from "./types";
 
 export function planWaveRuntime(waveNumber: number): WaveRuntime {
@@ -13,7 +18,6 @@ export function planWaveRuntime(waveNumber: number): WaveRuntime {
       t += entry.spawnDelayMs;
     }
   }
-  // Stable chronological order
   spawnQueue.sort((a, b) => a.spawnAtMs - b.spawnAtMs);
   return {
     spawnQueue,
@@ -27,8 +31,15 @@ export function spawnDueCreeps(
   creeps: CreepInstance[],
   nextId: () => string,
   dtMs: number,
+  waveNumber = 1,
 ): void {
   runtime.elapsedMs += dtMs;
+  const hpMult = waveHpMultiplier(
+    waveNumber,
+    WAVE_HP_SCALE_PER_WAVE,
+    WAVE_HP_SCALE_ENDLESS_EXTRA,
+    WAVE_HP_ENDLESS_START,
+  );
   while (runtime.spawnQueue.length > 0) {
     const next = runtime.spawnQueue[0]!;
     if (next.spawnAtMs > runtime.elapsedMs) break;
@@ -36,10 +47,12 @@ export function spawnDueCreeps(
     const def = getCreepDef(next.creepId);
     if (!def) continue;
     const start = MAP.path[0] ?? { x: 0, y: 0 };
+    const maxHp = Math.max(1, Math.round(def.maxHp * hpMult));
     creeps.push({
       instanceId: nextId(),
       defId: def.id,
-      hp: def.maxHp,
+      hp: maxHp,
+      maxHp,
       pathIndex: 0,
       pathT: 0,
       x: start.x,

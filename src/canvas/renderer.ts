@@ -1,6 +1,7 @@
 import { TILE_SIZE_PX } from "../core/constants";
 import { MAP, isPathTile } from "../content/map";
 import { getCreepDef } from "../content/creeps";
+import { getPathSabotageDef } from "../content/pathSabotage";
 import { ERA_HUE, getUnitDef } from "../content/units";
 import { creepWorldPos } from "../core/pathing";
 import { projectileDrawPos } from "../core/combat";
@@ -58,10 +59,11 @@ export function drawGrid(dc: DrawContext): void {
   }
 }
 
-/** Draw a placed sabotage slow zone marker (placeholder ring on path tile). */
+/** Draw a placed sabotage marker (slow = amber; fork = cyan). */
 export function drawSabotageMarker(
   dc: DrawContext,
   pathIndex: number,
+  kind: "slow_segment" | "brief_fork" = "slow_segment",
 ): void {
   const tile = MAP.path[pathIndex];
   if (!tile) return;
@@ -70,9 +72,15 @@ export function drawSabotageMarker(
   const cy = tile.y * tileSize + tileSize / 2;
   ctx.beginPath();
   ctx.arc(cx, cy, tileSize * 0.22, 0, Math.PI * 2);
-  ctx.fillStyle = "rgba(180, 140, 40, 0.45)";
-  ctx.fill();
-  ctx.strokeStyle = "#d4b84a";
+  if (kind === "brief_fork") {
+    ctx.fillStyle = "rgba(80, 160, 200, 0.4)";
+    ctx.fill();
+    ctx.strokeStyle = "#6ec8e8";
+  } else {
+    ctx.fillStyle = "rgba(180, 140, 40, 0.45)";
+    ctx.fill();
+    ctx.strokeStyle = "#d4b84a";
+  }
   ctx.stroke();
 }
 
@@ -113,7 +121,8 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   const { x: cx, y: cy } = worldToPx(world.x + 0.5, world.y + 0.5, tileSize);
   const boss = def?.isBoss ?? false;
   const r = tileSize * (boss ? 0.38 : 0.26);
-  const hpRatio = def ? Math.max(0, creep.hp / def.maxHp) : 1;
+  const maxHp = creep.maxHp > 0 ? creep.maxHp : (def?.maxHp ?? 1);
+  const hpRatio = Math.max(0, creep.hp / maxHp);
 
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -173,7 +182,10 @@ export function renderBoard(ctx: CanvasRenderingContext2D, state: RunState): voi
   drawGrid(dc);
 
   for (const s of state.pathSabotages) {
-    if (s.placed && s.pathIndex !== null) drawSabotageMarker(dc, s.pathIndex);
+    if (s.placed && s.pathIndex !== null) {
+      const def = getPathSabotageDef(s.defId);
+      drawSabotageMarker(dc, s.pathIndex, def?.kind ?? "slow_segment");
+    }
   }
   for (const unit of state.board) drawUnit(dc, unit);
   for (const creep of state.creeps) drawCreep(dc, creep);

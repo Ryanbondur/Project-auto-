@@ -1,4 +1,8 @@
-import { SHOP_SIZE } from "./constants";
+import {
+  SHOP_CHIP_CHANCE,
+  SHOP_SABOTAGE_CHANCE,
+  SHOP_SIZE,
+} from "./constants";
 import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { BUFF_CHIP_DEFS, getBuffChipDef } from "../content/buffChips";
 import { PATH_SABOTAGE_DEFS, getPathSabotageDef } from "../content/pathSabotage";
@@ -54,9 +58,9 @@ function pickUnitOffer(
 }
 
 /**
- * Roll shop offers. Mostly units; ~15% chance a slot is a buff chip;
- * ~3% chance path sabotage (rare). Unit offers sample era via shopOdds, then
- * uniform unit among defs of that era.
+ * Roll shop offers. Mostly units; buff chips / path sabotage at tunable rates
+ * (see SHOP_CHIP_CHANCE / SHOP_SABOTAGE_CHANCE). Unit offers sample era via
+ * shopOdds, then uniform unit among defs of that era.
  */
 export function rollShopOffers(
   eraConfig: EraConfig,
@@ -69,9 +73,12 @@ export function rollShopOffers(
   for (let i = 0; i < size; i++) {
     const roll = rand();
     let kind: ShopOfferKind = "unit";
-    if (roll < 0.03 && PATH_SABOTAGE_DEFS.length > 0) {
+    if (roll < SHOP_SABOTAGE_CHANCE && PATH_SABOTAGE_DEFS.length > 0) {
       kind = "path_sabotage";
-    } else if (roll < 0.18 && BUFF_CHIP_DEFS.length > 0) {
+    } else if (
+      roll < SHOP_SABOTAGE_CHANCE + SHOP_CHIP_CHANCE &&
+      BUFF_CHIP_DEFS.length > 0
+    ) {
       kind = "buff_chip";
     }
 
