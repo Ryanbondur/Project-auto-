@@ -6,9 +6,11 @@ import { BoardUnits } from "../ui/BoardUnits";
 import { DefeatOverlay } from "../ui/DefeatOverlay";
 import { DragGhostOverlay } from "../ui/DragGhost";
 import { DpsPanel } from "../ui/DpsPanel";
+import { DraftDuelModal } from "../ui/DraftDuelModal";
 import { EraDiscoveryModal } from "../ui/EraDiscoveryModal";
 import { EventChoiceModal } from "../ui/EventChoiceModal";
 import { GambitPanel } from "../ui/GambitPanel";
+import { RunFeedbackToast } from "../ui/RunFeedbackToast";
 import { SabotageTray } from "../ui/SabotageTray";
 import { AutoMergeToggle } from "../ui/AutoMergeToggle";
 import { SellZone } from "../ui/SellZone";
@@ -31,10 +33,12 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
   const frozen = state.phase === "ERA_FREEZE";
   const defeated = state.phase === "RUN_DEFEAT";
   const eventPending = Boolean(state.eventChoice);
+  const draftPending = Boolean(state.draftDuel);
   const canReady =
     !frozen &&
     !defeated &&
     !eventPending &&
+    !draftPending &&
     (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP");
   const fighting =
     state.phase === "AUTOBATTLE" || state.phase === "EVENT_ARENA";
@@ -42,6 +46,7 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
     !frozen &&
     !defeated &&
     !eventPending &&
+    !draftPending &&
     (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP");
 
   const sellZoneRef = useRef<HTMLDivElement>(null);
@@ -108,7 +113,9 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
                     ? "Era Discovery…"
                     : eventPending
                       ? "Event…"
-                      : "Ready"}
+                      : draftPending
+                        ? "Draft…"
+                        : "Ready"}
             </button>
             <SellZone hot={drag.sellHot} zoneRef={sellZoneRef} />
             <AutoMergeToggle />
@@ -117,11 +124,13 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
                 ? "Wave frozen — pick a free 2★ unit"
                 : eventPending
                   ? "Pick a run event"
-                  : state.phase === "EVENT_ARENA"
-                    ? "Boss arena — win loot or pay fail cost"
-                    : fighting
-                      ? `Wave ${state.waveNumber}`
-                      : "Start wave"}
+                  : draftPending
+                    ? "Pick a draft counter"
+                    : state.phase === "EVENT_ARENA"
+                      ? "Boss arena — win loot or pay fail cost"
+                      : fighting
+                        ? `Wave ${state.waveNumber}`
+                        : "Start wave"}
             </span>
             {!defeated && (
               <button
@@ -160,8 +169,12 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
           <GambitPanel />
         </div>
       </div>
+      <RunFeedbackToast />
       {state.phase === "ERA_FREEZE" && <EraDiscoveryModal />}
-      {state.eventChoice && <EventChoiceModal />}
+      {state.eventChoice && !state.discovery && <EventChoiceModal />}
+      {state.draftDuel && !state.eventChoice && !state.discovery && (
+        <DraftDuelModal />
+      )}
       {inspectId && (
         <UnitInspectSheet
           instanceId={inspectId}

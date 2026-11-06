@@ -26,14 +26,17 @@ export function worldToPx(
  * keep signatures + world positions from the sim.
  */
 
-function pathNeighbors(index: number): {
+function pathNeighbors(
+  path: { x: number; y: number }[],
+  index: number,
+): {
   prev: { x: number; y: number } | null;
   next: { x: number; y: number } | null;
   corner: boolean;
 } {
-  const cur = MAP.path[index];
-  const prev = index > 0 ? MAP.path[index - 1]! : null;
-  const next = index < MAP.path.length - 1 ? MAP.path[index + 1]! : null;
+  const cur = path[index];
+  const prev = index > 0 ? path[index - 1]! : null;
+  const next = index < path.length - 1 ? path[index + 1]! : null;
   let corner = false;
   if (prev && next && cur) {
     const dx0 = cur.x - prev.x;
@@ -65,10 +68,14 @@ function drawChevron(
   ctx.restore();
 }
 
-export function drawGrid(dc: DrawContext): void {
+export function drawGrid(
+  dc: DrawContext,
+  path: { x: number; y: number }[] = MAP.path,
+): void {
   const { ctx, tileSize } = dc;
   const { width, height } = MAP;
   const phone = tileSize <= 52;
+  const lane = path.length ? path : MAP.path;
 
   // Quiet void field
   ctx.fillStyle = theme.bgBoard;
@@ -91,7 +98,7 @@ export function drawGrid(dc: DrawContext): void {
   }
 
   // Neon lane — dim fill under selective cyan edge glow
-  for (const p of MAP.path) {
+  for (const p of lane) {
     const px = p.x * tileSize;
     const py = p.y * tileSize;
     const inset = tileSize * 0.12;
@@ -104,7 +111,7 @@ export function drawGrid(dc: DrawContext): void {
   ctx.lineWidth = 1.5;
   ctx.shadowColor = theme.cyan;
   ctx.shadowBlur = phone ? theme.pathGlowBlur : theme.pathGlowBlur + 2;
-  for (const p of MAP.path) {
+  for (const p of lane) {
     const inset = tileSize * 0.14;
     ctx.strokeRect(
       p.x * tileSize + inset,
@@ -118,7 +125,7 @@ export function drawGrid(dc: DrawContext): void {
   // Inner dim stroke (no glow) for lane body
   ctx.strokeStyle = "rgba(26, 143, 163, 0.55)";
   ctx.lineWidth = 1;
-  for (const p of MAP.path) {
+  for (const p of lane) {
     const inset = tileSize * 0.22;
     ctx.strokeRect(
       p.x * tileSize + inset,
@@ -130,11 +137,11 @@ export function drawGrid(dc: DrawContext): void {
 
   // Sparse chevrons — corners + every N tiles (not a sticker strip)
   const N = 5;
-  for (let i = 0; i < MAP.path.length - 1; i++) {
-    const { next, corner } = pathNeighbors(i);
+  for (let i = 0; i < lane.length - 1; i++) {
+    const { next, corner } = pathNeighbors(lane, i);
     if (!next) continue;
     if (!corner && i % N !== 0) continue;
-    const cur = MAP.path[i]!;
+    const cur = lane[i]!;
     const cx = (cur.x + 0.5) * tileSize;
     const cy = (cur.y + 0.5) * tileSize;
     const angle = Math.atan2(next.y - cur.y, next.x - cur.x);
@@ -142,7 +149,7 @@ export function drawGrid(dc: DrawContext): void {
   }
 
   // Modest exit beacon (path end) — not a crystal monument
-  const exit = MAP.path[MAP.path.length - 1];
+  const exit = lane[lane.length - 1];
   if (exit) {
     const ex = (exit.x + 0.5) * tileSize;
     const ey = (exit.y + 0.5) * tileSize;
@@ -160,7 +167,7 @@ export function drawGrid(dc: DrawContext): void {
   }
 
   // Start pip — quiet cyan
-  const start = MAP.path[0];
+  const start = lane[0];
   if (start) {
     const sx = (start.x + 0.5) * tileSize;
     const sy = (start.y + 0.5) * tileSize;
@@ -176,8 +183,9 @@ export function drawSabotageMarker(
   dc: DrawContext,
   pathIndex: number,
   kind: "slow_segment" | "brief_fork" = "slow_segment",
+  path: { x: number; y: number }[] = MAP.path,
 ): void {
-  const tile = MAP.path[pathIndex];
+  const tile = path[pathIndex];
   if (!tile) return;
   const { ctx, tileSize } = dc;
   const cx = tile.x * tileSize + tileSize / 2;
@@ -278,7 +286,7 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   ctx.fill();
   ctx.stroke();
 
-  if (boss) {
+  if (boss || creep.isBossCreep) {
     // Second glitch ghost
     ctx.globalAlpha = 0.25;
     ctx.strokeStyle = theme.cyan;
@@ -288,7 +296,7 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   }
   ctx.restore();
 
-  // Thin HP bar
+  // Thin HP bar (+ shield segment for Shielded agenda)
   const barW = Math.max(r * 1.6, tileSize * 0.35);
   const barH = 2.5;
   const barY = cy - r - 7;
@@ -296,6 +304,29 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   ctx.fillRect(cx - barW / 2, barY, barW, barH);
   ctx.fillStyle = hpRatio > 0.35 ? theme.cyanDim : theme.danger;
   ctx.fillRect(cx - barW / 2, barY, barW * hpRatio, barH);
+  if (creep.shieldHp > 0) {
+    const sh = Math.min(1, creep.shieldHp / Math.max(1, maxHp * 0.22));
+    ctx.fillStyle = "rgba(46, 230, 255, 0.55)";
+    ctx.fillRect(cx - barW / 2, barY - 3, barW * sh, 2);
+  }
+  // Tiny agenda marks (minimal — one glyph, no clutter)
+  if (creep.agendas?.length) {
+    const mark = creep.agendas[0]!;
+    const glyph =
+      mark === "shielded"
+        ? "S"
+        : mark === "regen"
+          ? "R"
+          : mark === "splitter"
+            ? "X"
+            : mark === "siege"
+              ? "G"
+              : "H";
+    ctx.fillStyle = theme.textDim;
+    ctx.font = `600 ${Math.max(8, tileSize * 0.18)}px sans-serif`;
+    ctx.textAlign = "center";
+    ctx.fillText(glyph, cx, cy + r + 8);
+  }
 }
 
 /**
@@ -365,14 +396,18 @@ export function renderBoard(
 ): void {
   const tileSize = TILE_SIZE_PX;
   const dc: DrawContext = { ctx, tileSize, timeMs };
+  const path = state.path?.length ? state.path : MAP.path;
   ctx.clearRect(0, 0, MAP.width * tileSize, MAP.height * tileSize);
-  drawGrid(dc);
+  drawGrid(dc, path);
 
   for (const s of state.pathSabotages) {
     if (s.placed && s.pathIndex !== null) {
       const def = getPathSabotageDef(s.defId);
-      drawSabotageMarker(dc, s.pathIndex, def?.kind ?? "slow_segment");
+      drawSabotageMarker(dc, s.pathIndex, def?.kind ?? "slow_segment", path);
     }
+  }
+  if (state.modifiers?.pathFork) {
+    drawSabotageMarker(dc, state.modifiers.pathFork.pathIndex, "brief_fork", path);
   }
   for (const unit of state.board) drawUnit(dc, unit, state);
   for (const creep of state.creeps) drawCreep(dc, creep);

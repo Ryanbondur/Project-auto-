@@ -85,6 +85,32 @@ export function sabotageSpeedMult(
   return mult;
 }
 
+function divertAt(
+  pathIndex: number,
+  pathT: number,
+  start: number,
+  map: MapDef,
+): WorldPos {
+  const end = start + SABOTAGE_FORK_SPAN;
+  if (pathIndex < start || pathIndex > end) return { x: 0, y: 0 };
+  const path = map.path;
+  const span = SABOTAGE_FORK_SPAN + 1;
+  const local = pathIndex - start + pathT;
+  const u = Math.min(1, Math.max(0, local / span));
+  const strength = Math.sin(u * Math.PI);
+  const a = path[Math.min(pathIndex, path.length - 1)]!;
+  const b = path[Math.min(pathIndex + 1, path.length - 1)]!;
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const px = -dy / len;
+  const py = dx / len;
+  return {
+    x: px * SABOTAGE_FORK_OFFSET * strength,
+    y: py * SABOTAGE_FORK_OFFSET * strength,
+  };
+}
+
 /**
  * Brief fork / divert: lateral offset (tile units) while on a fork segment.
  * Does not change pathIndex legality — creeps stay on the path polyline with a
@@ -97,33 +123,23 @@ export function sabotageDivertOffset(
   pathT: number,
   sabotages: PathSabotageInstance[],
   map: MapDef = MAP,
+  /** Living-path / era-boss brief fork anchor. */
+  eventForkPathIndex: number | null = null,
 ): WorldPos {
   let ox = 0;
   let oy = 0;
-  const path = map.path;
   for (const s of sabotages) {
     if (!s.placed || s.pathIndex === null) continue;
     const def = getPathSabotageDef(s.defId);
     if (!def || def.kind !== "brief_fork") continue;
-    const start = s.pathIndex;
-    const end = s.pathIndex + SABOTAGE_FORK_SPAN;
-    if (pathIndex < start || pathIndex > end) continue;
-
-    const span = SABOTAGE_FORK_SPAN + 1;
-    const local = pathIndex - start + pathT;
-    const u = Math.min(1, Math.max(0, local / span));
-    const strength = Math.sin(u * Math.PI); // 0 → 1 → 0
-
-    const a = path[Math.min(pathIndex, path.length - 1)]!;
-    const b = path[Math.min(pathIndex + 1, path.length - 1)]!;
-    const dx = b.x - a.x;
-    const dy = b.y - a.y;
-    const len = Math.hypot(dx, dy) || 1;
-    // Perpendicular unit vector
-    const px = -dy / len;
-    const py = dx / len;
-    ox += px * SABOTAGE_FORK_OFFSET * strength;
-    oy += py * SABOTAGE_FORK_OFFSET * strength;
+    const d = divertAt(pathIndex, pathT, s.pathIndex, map);
+    ox += d.x;
+    oy += d.y;
+  }
+  if (eventForkPathIndex !== null) {
+    const d = divertAt(pathIndex, pathT, eventForkPathIndex, map);
+    ox += d.x;
+    oy += d.y;
   }
   return { x: ox, y: oy };
 }

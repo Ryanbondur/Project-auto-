@@ -1,10 +1,14 @@
 import { HEAL_PULSE_INTERVAL_MS } from "./buffEffects";
 import { REROLL_COST, SHOP_SIZE, STARTING_BASE_HP } from "./constants";
 import { getEraConfig } from "../content/eras";
-import { MAP, isPathTile, isPlaceableTile } from "../content/map";
+import {
+  cloneDefaultPath,
+  isPathTileOn,
+  isPlaceableTileOn,
+} from "../content/map";
 import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { BUFF_CHIP_DEFS, getBuffChipDef } from "../content/buffChips";
-import { getCreepDef } from "../content/creeps";
+import { getEraBossDef, eraBossForWave } from "../content/eraBosses";
 import { getPathSabotageDef } from "../content/pathSabotage";
 import { applyWavePayout, sellValue } from "./economy";
 import {
@@ -25,7 +29,19 @@ import {
   shouldOfferRunEventAtWaveBand,
   tickPathSlowAfterWave,
 } from "./events";
+import {
+  applyDoctrineToRun,
+  doctrineInterestBonus,
+  doctrineMergeGold,
+} from "./doctrine";
+import { applyDraftCounter, rollDraftDuel, shouldOfferDraftDuel } from "./draftDuel";
+import {
+  autoBenchInvalidatedUnits,
+  mutatePath,
+} from "./pathMutate";
+import { initAgendaRuntime } from "./creepAgendas";
 import { createRng } from "./rng";
+import type { CreepAgenda } from "./types";
 import {
   clearPrepGambitOnReady,
   createGambitState,
@@ -47,8 +63,10 @@ import { buildMetaApplied } from "../meta/commander";
 import { metaStore, type MetaStore } from "../meta/metaStore";
 import type {
   BuffChipInstance,
+  DoctrineId,
   GambitId,
   PathSabotageInstance,
+  RunFeedback,
   RunState,
   SkillId,
   UnitInstance,
@@ -116,12 +134,23 @@ function rebindTransferredChips(state: RunState): void {
   }
 }
 
+function pushFeedback(state: RunState, text: string, ttlMs = 3200): void {
+  const fb: RunFeedback = {
+    id: createInstanceId("fb"),
+    text,
+    ttlMs,
+  };
+  state.feedback = [...(state.feedback ?? []), fb].slice(-4);
+}
+
 function applyMerges(state: RunState): void {
   // Auto-merge is a player toggle (default ON). Drag-to-combine always works.
   if (!state.autoMergeEnabled) return;
+  const beforeGold = state.gold;
   const unitMerge = autoMergePairwise(state.board, state.bench, () =>
     createInstanceId("m"),
   );
+  const mergeCount = unitMerge.mergeCount;
   state.board = unitMerge.board;
   state.bench = unitMerge.bench;
   rebindTransferredChips(state);
@@ -129,16 +158,26 @@ function applyMerges(state: RunState): void {
   const chipMerge = autoMergeChipsPairwise(state.chips, () => createInstanceId("c"));
   state.chips = chipMerge.chips;
   state.chipInventory = state.chips.filter((c) => c.socketedOnInstanceId === null);
+
+  const goldPer = doctrineMergeGold(state.doctrineId);
+  if (goldPer > 0 && mergeCount > 0) {
+    state.gold = beforeGold + goldPer * mergeCount;
+  }
 }
 
 export function createInitialRunState(
   seed = 42,
   skills: SkillId[] = [],
-  options?: { skipCodexReveal?: boolean },
+  options?: {
+    skipCodexReveal?: boolean;
+    doctrineId?: DoctrineId | null;
+  },
 ): RunState {
   const mods = buildMetaApplied(skills);
   const era = mods.eraThresholds.find((e) => e.era === 1) ?? getEraConfig(1);
-  const { shop, nextSeed } = createShopState(era, seed);
+  const doctrineId = options?.doctrineId ?? null;
+  const { shop, nextSeed } = createShopState(era, seed, SHOP_SIZE, doctrineId);
+  const path = cloneDefaultPath();
   const state: RunState = {
     phase: "SHOP_PREP",
     waveNumber: 1,
@@ -174,7 +213,19 @@ export function createInitialRunState(
     lastTileClick: null,
     lastPayout: null,
     healPulseCooldownMs: HEAL_PULSE_INTERVAL_MS,
+    doctrineId: null,
+    path,
+    draftDuel: null,
+    draftDuelCompletedEra: 0,
+    activeDraftCounter: null,
+    pendingEraBoss: null,
+    combatElapsedMs: 0,
+    feedback: [],
   };
+  if (doctrineId) {
+    const mid = Math.floor(path.length / 2);
+    applyDoctrineToRun(state, doctrineId, mid);
+  }
   if (!options?.skipCodexReveal) {
     revealShopUnits(shop.offers);
   }
@@ -203,7 +254,9 @@ function assertPrep(state: RunState): boolean {
 function completeWavePayout(next: RunState): void {
   const mult = interestMultiplier(next.gambit);
   const payout = applyWavePayout(next.gold, next.metaApplied.interestCap);
-  const bonus = consumeInterestBonus(next.modifiers);
+  const bonus =
+    consumeInterestBonus(next.modifiers) +
+    doctrineInterestBonus(next.doctrineId);
   const interest = payout.interest * mult + bonus;
   next.gold = next.gold + interest + payout.income;
   next.lastPayout = { interest, income: payout.income };
@@ -216,10 +269,119 @@ function completeWavePayout(next: RunState): void {
   next.creeps = [];
   next.projectiles = [];
   next.waveRuntime = null;
-  // Reset combat cooldowns for next wave
+  next.combatElapsedMs = 0;
+  next.pendingEraBoss = null;
   for (const u of next.board) {
     u.cooldownMs = 0;
     u.currentTargetId = null;
+    u.silencedUntilMs = 0;
+  }
+}
+
+function applyLivingPathMutation(next: RunState, kind: "auto" | "lengthen" | "add_bend" | "brief_fork" = "auto"): void {
+  const result = mutatePath(next.path, kind, next.rngSeed);
+  next.rngSeed = (next.rngSeed + 19) >>> 0;
+  if (!result.ok) {
+    pushFeedback(next, "Path held steady — no legal mutation.");
+    return;
+  }
+  const oldPath = next.path;
+  next.path = result.path;
+  if (result.kind === "brief_fork" && result.forkAnchor !== undefined) {
+    next.modifiers.pathFork = {
+      pathIndex: result.forkAnchor,
+      wavesRemaining: 2,
+    };
+  }
+  const invalidated =
+    result.invalidated.length > 0
+      ? result.invalidated
+      : result.path.filter(
+          (t) => !oldPath.some((o) => o.x === t.x && o.y === t.y),
+        );
+  if (invalidated.length > 0) {
+    const moved = autoBenchInvalidatedUnits(
+      next.board,
+      next.bench,
+      invalidated,
+      next.metaApplied.benchCapacity,
+    );
+    next.board = moved.board;
+    next.bench = moved.bench;
+    if (moved.benchedIds.length > 0) {
+      pushFeedback(
+        next,
+        `${result.message ?? "Path mutated"} (${moved.benchedIds.length} benched)`,
+      );
+    } else {
+      pushFeedback(next, result.message ?? "Path mutated.");
+    }
+  } else {
+    pushFeedback(next, result.message ?? "Path mutated.");
+  }
+}
+
+function openDraftDuel(next: RunState): void {
+  const rolled = rollDraftDuel(next.rngSeed, next.currentEra);
+  next.draftDuel = rolled.duel;
+  next.rngSeed = rolled.nextSeed;
+}
+
+function maybeQueueDraftAfterEvent(next: RunState): void {
+  if (shouldOfferDraftDuel(next) && !next.draftDuel && !next.eventChoice) {
+    openDraftDuel(next);
+  }
+}
+
+function grantEraBossLoot(next: RunState, bossId: string): void {
+  const boss = getEraBossDef(bossId as never) ?? eraBossForWave(next.waveNumber, next.currentEra);
+  const rand = createRng(next.rngSeed);
+  next.rngSeed = (next.rngSeed + 1 + Math.floor(rand() * 1e9)) >>> 0;
+  const total = boss.loot.reduce((s, e) => s + e.weight, 0);
+  let roll = rand() * total;
+  let pick = boss.loot[0]!;
+  for (const entry of boss.loot) {
+    roll -= entry.weight;
+    if (roll <= 0) {
+      pick = entry;
+      break;
+    }
+  }
+  if (pick.kind === "gold") {
+    next.gold += pick.amount;
+    pushFeedback(next, `${boss.name} loot: +${pick.amount}g`);
+  } else if (pick.kind === "trait") {
+    if (pick.traitId === "ballistic_damage") next.modifiers.ballisticDamageBonus += 0.1;
+    else if (pick.traitId === "interest_bonus") next.modifiers.interestBonusNextPayout += 1;
+    else if (pick.traitId === "creep_hp_cut") {
+      next.modifiers.nextWaveHpMult = Math.max(0.1, next.modifiers.nextWaveHpMult - 0.1);
+    } else if (pick.traitId === "board_slot_plus") next.modifiers.boardSlotsBonus += 1;
+    else if (pick.traitId === "leak_brace") next.modifiers.leakDamageReduction += 1;
+    next.modifiers.traits.push(pick.traitId);
+    pushFeedback(next, `${boss.name} loot: trait`);
+  } else if (pick.kind === "unit") {
+    const unlocked = UNIT_DEFS.filter((u) => u.era <= next.currentEra);
+    const pool = unlocked.length > 0 ? unlocked : UNIT_DEFS;
+    const def = pool[Math.floor(rand() * pool.length)] ?? pool[0];
+    if (def) {
+      next.bench.push(makeUnit(def.id, 1, null));
+      applyMerges(next);
+      metaApi.revealCodex([def.id]);
+      pushFeedback(next, `${boss.name} loot: ${def.name}`);
+    }
+  } else if (pick.kind === "chip") {
+    const chipDef =
+      BUFF_CHIP_DEFS[Math.floor(rand() * BUFF_CHIP_DEFS.length)] ??
+      BUFF_CHIP_DEFS[0]!;
+    const chip: BuffChipInstance = {
+      instanceId: createInstanceId("c"),
+      defId: chipDef.id,
+      starLevel: 1,
+      socketedOnInstanceId: null,
+    };
+    next.chips.push(chip);
+    applyMerges(next);
+    pushFeedback(next, `${boss.name} loot: ${chipDef.name}`);
   }
 }
 
@@ -233,9 +395,25 @@ function openEventChoice(next: RunState, reason: "era" | "band"): void {
  * After payout: era threshold → ERA_FREEZE (discovery first).
  * Event Choice opens only after Era Discovery resolves (see pickDiscovery),
  * or on the late endless 10-wave band when already at era 5.
- * Never stacks Event + Era sheets the same frame.
+ * Never stacks Event + Era + Draft sheets the same frame.
+ * Living path mutates on era advance (after discovery is queued).
  */
 function afterWaveClear(next: RunState): void {
+  // Era boss loot if a named boss was fought this wave
+  const bossFought = next.creeps.find((c) => c.isBossCreep && c.displayName);
+  const bossDefId = next.pendingEraBoss;
+  if (bossDefId || bossFought) {
+    const id =
+      bossDefId ??
+      eraBossForWave(next.waveNumber, next.currentEra).id;
+    // Apply mechanic aftermath before payout wipe
+    const boss = getEraBossDef(id);
+    if (boss?.mechanic === "disable_shop" || boss?.mechanic === "gold_tax_and_lock") {
+      next.modifiers.shopDisabledThisPrep = true;
+    }
+    grantEraBossLoot(next, id);
+  }
+
   completeWavePayout(next);
   if (
     shouldAdvanceEra(
@@ -244,6 +422,8 @@ function afterWaveClear(next: RunState): void {
       next.metaApplied.eraThresholds,
     )
   ) {
+    // Living path mutates on era events (before discovery sheet)
+    applyLivingPathMutation(next, "auto");
     const newEra = (next.currentEra + 1) as 1 | 2 | 3 | 4 | 5;
     const rolled = rollDiscoveryChoices(newEra, next.rngSeed);
     next.discovery = { newEra, choices: rolled.choices };
@@ -252,12 +432,17 @@ function afterWaveClear(next: RunState): void {
     next.selectedInstanceId = null;
     next.selectedSabotageId = null;
     next.eventChoice = null;
+    next.draftDuel = null;
     metaApi.revealCodex(rolled.choices.map((c) => c.defId));
     return;
   }
   next.discovery = null;
   next.phase = "SHOP_PREP";
   if (shouldOfferRunEventAtWaveBand(next.currentEra, next.wavesCleared)) {
+    // Optional living path on band events too (mild)
+    if (next.wavesCleared % 20 === 0) {
+      applyLivingPathMutation(next, "auto");
+    }
     openEventChoice(next, "band");
     return;
   }
@@ -302,6 +487,7 @@ function grantBossArenaLoot(next: RunState): void {
 
 function startBossArena(next: RunState): void {
   next.phase = "EVENT_ARENA";
+  const story = eraBossForWave(next.waveNumber, next.currentEra);
   next.arena = {
     kind: "boss",
     bossDefId: "creep_boss",
@@ -312,11 +498,10 @@ function startBossArena(next: RunState): void {
   next.eventChoice = null;
   next.selectedInstanceId = null;
   next.selectedSabotageId = null;
-  // Single tough boss — slightly beefier than catalog for arena stakes.
-  const def = getCreepDef("creep_boss");
-  const start = MAP.path[0] ?? { x: 0, y: 0 };
-  const maxHp = Math.max(1, Math.round((def?.maxHp ?? 600) * 1.35));
-  next.creeps.push({
+  next.combatElapsedMs = 0;
+  const start = next.path[0] ?? { x: 0, y: 0 };
+  const maxHp = Math.max(1, Math.round(story.maxHp * 1.25));
+  const creep = {
     instanceId: createInstanceId("e"),
     defId: "creep_boss",
     hp: maxHp,
@@ -326,7 +511,25 @@ function startBossArena(next: RunState): void {
     x: start.x,
     y: start.y,
     alive: true,
-  });
+    agendas: [] as CreepAgenda[],
+    shieldHp: 0,
+    regenAccMs: 0,
+    hexCooldownMs: 0,
+    isBossCreep: true,
+    displayName: story.name,
+    bossMechanic: story.mechanic,
+  };
+  initAgendaRuntime(creep, [...story.agendas]);
+  next.creeps.push(creep);
+  next.pendingEraBoss = story.id;
+  // Path splitter arena mechanic
+  if (story.mechanic === "path_splitter") {
+    applyLivingPathMutation(next, "brief_fork");
+  }
+  if (story.mechanic === "gold_tax" || story.mechanic === "gold_tax_and_lock") {
+    next.gold = Math.max(0, next.gold - 4);
+    pushFeedback(next, `${story.name} taxes 4g`);
+  }
   next.waveRuntime = {
     spawnQueue: [],
     elapsedMs: 0,
@@ -338,15 +541,21 @@ function startBossArena(next: RunState): void {
     u.cooldownMs = 0;
     u.currentTargetId = null;
   }
+  pushFeedback(next, `${story.name} — ${story.blurb}`);
 }
 
 function refreshShopOn(next: RunState): void {
+  if (next.modifiers.shopDisabledThisPrep) {
+    next.shop = { offers: [], rerollCost: 1 };
+    pushFeedback(next, "Shop locked this prep");
+    return;
+  }
   const era =
     next.metaApplied.eraThresholds.find((e) => e.era === next.currentEra) ??
     getEraConfig(next.currentEra);
   const bonus = consumeShopOfferBonus(next.modifiers);
   const size = SHOP_SIZE + Math.max(0, bonus);
-  const rolled = createShopState(era, next.rngSeed, size);
+  const rolled = createShopState(era, next.rngSeed, size, next.doctrineId);
   next.shop = rolled.shop;
   next.rngSeed = rolled.nextSeed;
   revealShopUnits(next.shop.offers);
@@ -360,8 +569,8 @@ function boardSlotCap(state: RunState): number {
 }
 
 /** Mid-path anchor for event slow lane (path-legal; not start/end). */
-function midPathIndex(): number {
-  const len = MAP.path.length;
+function midPathIndex(state?: RunState): number {
+  const len = (state?.path ?? cloneDefaultPath()).length;
   if (len <= 2) return 0;
   return Math.floor(len / 2);
 }
@@ -390,6 +599,8 @@ export type GameStore = {
   mergeOnto: (sourceId: string, targetId: string) => ActionResult;
   /** Resolve pending run-event choice (index into eventChoice.choices). */
   pickEvent: (choiceIndex: number) => ActionResult;
+  /** Resolve draft duel rival counter pick. */
+  pickDraftCounter: (rivalIndex: number) => ActionResult;
   /** Toggle auto pairwise merge (drag-combine always available). Default ON. */
   setAutoMergeEnabled: (enabled: boolean) => void;
   socketChip: (chipInstanceId: string, unitInstanceId: string) => ActionResult;
@@ -411,8 +622,17 @@ export type GameStore = {
   /**
    * Start a new run with current owned skills. Replaces any paused run
    * (only one active run allowed — design-decisions).
+   * Pass doctrineId from the New Run doctrine sheet.
    */
-  startNewRun: (seed?: number) => void;
+  startNewRun: (seed?: number, doctrineId?: DoctrineId) => void;
+  /** Debug: force living path mutation. */
+  debugMutatePath: (kind?: "auto" | "lengthen" | "add_bend" | "brief_fork") => ActionResult;
+  /** Debug: force draft duel sheet. */
+  debugForceDraftDuel: () => ActionResult;
+  /** Debug: seed a wave with agenda creeps visible. */
+  debugSeedAgendaDemo: () => ActionResult;
+  /** Debug: force named era boss banner + pending. */
+  debugSeedEraBoss: () => ActionResult;
   /** Persist run to localStorage and leave combat paused (caller routes to menu). */
   pauseActiveRun: () => void;
   /** Resume the single paused run into this store. */
@@ -482,15 +702,34 @@ export function createStore(initial?: RunState): GameStore {
     emit();
   };
 
-  const startWave = (): ActionResult => {
+    const startWave = (): ActionResult => {
     if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
     if (state.eventChoice) return { ok: false, reason: "event_pending" };
+    if (state.draftDuel) return { ok: false, reason: "draft_pending" };
     const next = cloneRunState(state);
     next.phase = "AUTOBATTLE";
     next.creeps = [];
     next.projectiles = [];
+    next.combatElapsedMs = 0;
+    // Leaving a shop-locked prep — unlock for the following prep after this wave
+    next.modifiers.shopDisabledThisPrep = false;
     const hpMult = consumeNextWaveHpMult(next.modifiers);
     next.waveRuntime = planWaveRuntime(next.waveNumber, hpMult);
+    // Preview named boss on boss waves
+    if (next.waveNumber % 10 === 0) {
+      const boss = eraBossForWave(next.waveNumber, next.currentEra);
+      next.pendingEraBoss = boss.id;
+      pushFeedback(next, `${boss.name}: ${boss.blurb}`);
+      if (boss.mechanic === "path_splitter") {
+        applyLivingPathMutation(next, "brief_fork");
+      }
+      if (
+        boss.mechanic === "gold_tax" ||
+        boss.mechanic === "gold_tax_and_lock"
+      ) {
+        next.gold = Math.max(0, next.gold - 4);
+      }
+    }
     next.selectedInstanceId = null;
     next.selectedSabotageId = null;
     next.gambit = clearPrepGambitOnReady(next.gambit);
@@ -498,6 +737,7 @@ export function createStore(initial?: RunState): GameStore {
     for (const u of next.board) {
       u.cooldownMs = 0;
       u.currentTargetId = null;
+      u.silencedUntilMs = 0;
     }
     resetWaveDamage(next.board);
     resetWaveDamage(next.bench);
@@ -527,17 +767,18 @@ export function createStore(initial?: RunState): GameStore {
     },
 
     clickTile: (x, y) => {
-      const placeable = isPlaceableTile(x, y);
+      const path = state.path?.length ? state.path : cloneDefaultPath();
+      const placeable = isPlaceableTileOn(path, x, y);
       console.log(`[tile] (${x},${y}) placeable=${placeable}`);
       const next = cloneRunState(state);
       next.lastTileClick = { x, y, placeable };
 
-      if (assertPrep(next) && next.selectedSabotageId && isPathTile(x, y)) {
+      if (assertPrep(next) && next.selectedSabotageId && isPathTileOn(path, x, y)) {
         const item = next.pathSabotages.find(
           (s) => s.instanceId === next.selectedSabotageId,
         );
         if (item && !item.placed) {
-          const idx = MAP.path.findIndex((p) => p.x === x && p.y === y);
+          const idx = path.findIndex((p) => p.x === x && p.y === y);
           if (idx >= 0) {
             item.pathIndex = idx;
             item.placed = true;
@@ -555,6 +796,7 @@ export function createStore(initial?: RunState): GameStore {
           next.selectedInstanceId,
           { x, y },
           boardSlotCap(next),
+          path,
         );
         if (result.ok) {
           next.board = result.board;
@@ -703,6 +945,8 @@ export function createStore(initial?: RunState): GameStore {
       next.board = result.board;
       next.bench = result.bench;
       rebindTransferredChips(next);
+      const goldPer = doctrineMergeGold(next.doctrineId);
+      if (goldPer > 0) next.gold += goldPer;
       // Safety net: auto-merge any remaining pairs after explicit combine.
       applyMerges(next);
       next.selectedInstanceId = result.product.instanceId;
@@ -719,7 +963,7 @@ export function createStore(initial?: RunState): GameStore {
       if (!choice) return { ok: false, reason: "invalid_choice" };
       const next = cloneRunState(state);
       const rand = createRng(next.rngSeed);
-      const applied = applyRunEvent(next, choice.id, midPathIndex(), rand);
+      const applied = applyRunEvent(next, choice.id, midPathIndex(next), rand);
       next.rngSeed = (next.rngSeed + 1 + Math.floor(rand() * 1e9)) >>> 0;
       if (applied.kind === "cannot_afford") {
         return { ok: false, reason: "insufficient_gold" };
@@ -729,7 +973,37 @@ export function createStore(initial?: RunState): GameStore {
         setState(next);
         return { ok: true };
       }
+      if (applied.kind === "path_mutate") {
+        next.eventChoice = null;
+        applyLivingPathMutation(next, "auto");
+        refreshShopOn(next);
+        maybeQueueDraftAfterEvent(next);
+        setState(next);
+        return { ok: true };
+      }
+      if (applied.kind === "start_draft_duel") {
+        next.eventChoice = null;
+        openDraftDuel(next);
+        setState(next);
+        return { ok: true };
+      }
       next.eventChoice = null;
+      refreshShopOn(next);
+      maybeQueueDraftAfterEvent(next);
+      setState(next);
+      return { ok: true };
+    },
+
+    pickDraftCounter: (rivalIndex) => {
+      if (!state.draftDuel) return { ok: false, reason: "no_draft" };
+      if (state.phase !== "SHOP_PREP" && state.phase !== "MERGE_SETUP") {
+        return { ok: false, reason: "wrong_phase" };
+      }
+      const rival = state.draftDuel.rivals[rivalIndex];
+      if (!rival) return { ok: false, reason: "invalid_choice" };
+      const next = cloneRunState(state);
+      applyDraftCounter(next, rival.counterId);
+      pushFeedback(next, `Counter: ${rival.counterLabel}`);
       refreshShopOn(next);
       setState(next);
       return { ok: true };
@@ -804,6 +1078,13 @@ export function createStore(initial?: RunState): GameStore {
       if (state.phase !== "AUTOBATTLE" && !inArena) return;
       if (!state.waveRuntime) return;
 
+      // Decay feedback toasts
+      if (state.feedback?.length) {
+        state.feedback = state.feedback
+          .map((f) => ({ ...f, ttlMs: f.ttlMs - dtMs }))
+          .filter((f) => f.ttlMs > 0);
+      }
+
       // Hot path: mutate in place so canvas rAF stays smooth without
       // structuredClone every frame. React only needs a new snapshot on phase change.
       if (!inArena) {
@@ -812,8 +1093,17 @@ export function createStore(initial?: RunState): GameStore {
           state.creeps,
           () => createInstanceId("e"),
           dtMs,
-          state.waveNumber,
-          state.waveRuntime.eventHpMult ?? 1,
+          {
+            waveNumber: state.waveNumber,
+            era: state.currentEra,
+            path: state.path?.length ? state.path : cloneDefaultPath(),
+            eventHpMult: state.waveRuntime.eventHpMult ?? 1,
+            rngSeed: state.rngSeed,
+            pendingEraBoss: state.pendingEraBoss,
+            onEraBossSpawned: (id) => {
+              state.pendingEraBoss = id;
+            },
+          },
         );
       }
       const result = tickCombat(state, dtMs, () => createInstanceId("p"));
@@ -824,18 +1114,22 @@ export function createStore(initial?: RunState): GameStore {
           const next = cloneRunState(state);
           applyBossArenaFail(next);
           refreshShopOn(next);
+          maybeQueueDraftAfterEvent(next);
           setState(next);
           return;
         }
         if (result.waveComplete) {
           const next = cloneRunState(state);
+          const bossId = next.pendingEraBoss;
           next.arena = null;
           next.creeps = [];
           next.projectiles = [];
           next.waveRuntime = null;
           next.phase = "SHOP_PREP";
-          grantBossArenaLoot(next);
+          if (bossId) grantEraBossLoot(next, bossId);
+          else grantBossArenaLoot(next);
           refreshShopOn(next);
+          maybeQueueDraftAfterEvent(next);
           setState(next);
           return;
         }
@@ -882,23 +1176,29 @@ export function createStore(initial?: RunState): GameStore {
       applyMerges(next);
       next.phase = "SHOP_PREP";
       metaApi.revealCodex(offeredIds);
-      // Queue: Era Discovery first (just resolved), then Event Choice (1 of 2).
+      // Queue: Era Discovery → Event Choice → (later) Draft Duel.
+      // Never open Event + Draft the same frame.
       if (shouldOfferRunEventAfterEra()) {
         openEventChoice(next, "era");
       } else {
         refreshShopOn(next);
+        maybeQueueDraftAfterEvent(next);
       }
       setState(next);
       return { ok: true };
     },
 
-    startNewRun: (seed) => {
+    startNewRun: (seed, doctrineId) => {
       metaApi.clearPausedRun();
       nextInstanceSeq = 1;
       defeatAwarded = false;
       lastDefeatSummary = null;
       const skills = metaApi.getMeta().unlockedSkills;
-      setState(createInitialRunState(seed ?? Date.now() % 1_000_000, skills));
+      setState(
+        createInitialRunState(seed ?? Date.now() % 1_000_000, skills, {
+          doctrineId: doctrineId ?? null,
+        }),
+      );
     },
 
     pauseActiveRun: () => {
@@ -991,7 +1291,7 @@ export function createStore(initial?: RunState): GameStore {
       const tar: PathSabotageInstance = {
         instanceId: createInstanceId("s"),
         defId: "sabotage_tar_slick",
-        pathIndex: Math.min(8, MAP.path.length - 1),
+        pathIndex: Math.min(8, (next.path?.length ?? 20) - 1),
         placed: true,
       };
       const flare: PathSabotageInstance = {
@@ -1022,15 +1322,91 @@ export function createStore(initial?: RunState): GameStore {
         { defId: "unit_nano_swarm", star: 2, tile: { x: 9, y: 8 } },
         { defId: "unit_shield_bot", star: 2, tile: { x: 12, y: 3 } },
       ];
+      const path = next.path?.length ? next.path : cloneDefaultPath();
       const boarded: UnitInstance[] = [];
       for (const entry of roster) {
-        if (!isPlaceableTile(entry.tile.x, entry.tile.y)) continue;
+        if (!isPlaceableTileOn(path, entry.tile.x, entry.tile.y)) continue;
         boarded.push(makeUnit(entry.defId, entry.star, entry.tile));
       }
       next.board = boarded;
       next.bench = [];
       if (boarded[3]) next.selectedInstanceId = boarded[3]!.instanceId;
       metaApi.revealCodex(roster.map((r) => r.defId));
+      setState(next);
+      return { ok: true };
+    },
+
+    debugMutatePath: (kind = "auto") => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      applyLivingPathMutation(next, kind);
+      setState(next);
+      return { ok: true };
+    },
+
+    debugForceDraftDuel: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      next.draftDuelCompletedEra = Math.max(0, next.currentEra - 1);
+      openDraftDuel(next);
+      setState(next);
+      return { ok: true };
+    },
+
+    debugSeedAgendaDemo: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      next.phase = "AUTOBATTLE";
+      next.combatElapsedMs = 0;
+      const start = next.path[0] ?? { x: 0, y: 0 };
+      const agendas: CreepAgenda[][] = [
+        ["shielded"],
+        ["regen"],
+        ["splitter"],
+        ["siege"],
+        ["hex"],
+      ];
+      next.creeps = agendas.map((ags, i) => {
+        const c = {
+          instanceId: createInstanceId("e"),
+          defId: i === 3 ? "creep_tank" : "creep_grunt",
+          hp: 80,
+          maxHp: 80,
+          pathIndex: Math.min(2 + i * 3, next.path.length - 2),
+          pathT: 0.2,
+          x: start.x,
+          y: start.y,
+          alive: true,
+          agendas: [] as CreepAgenda[],
+          shieldHp: 0,
+          regenAccMs: 0,
+          hexCooldownMs: 0,
+          isBossCreep: false,
+        };
+        initAgendaRuntime(c, ags);
+        const tile = next.path[c.pathIndex] ?? start;
+        c.x = tile.x;
+        c.y = tile.y;
+        return c;
+      });
+      next.waveRuntime = {
+        spawnQueue: [],
+        elapsedMs: 0,
+        allSpawned: true,
+        eventHpMult: 1,
+      };
+      pushFeedback(next, "Agenda demo: Shielded · Regen · Splitter · Siege · Hex");
+      setState(next);
+      return { ok: true };
+    },
+
+    debugSeedEraBoss: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      const boss = eraBossForWave(Math.max(10, next.waveNumber), next.currentEra);
+      next.pendingEraBoss = boss.id;
+      next.waveNumber = Math.max(10, Math.ceil(next.waveNumber / 10) * 10);
+      pushFeedback(next, `${boss.name}: ${boss.blurb}`);
       setState(next);
       return { ok: true };
     },

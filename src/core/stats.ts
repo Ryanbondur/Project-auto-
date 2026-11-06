@@ -1,6 +1,12 @@
 import { starStatMultiplier } from "./constants";
 import { getUnitDef } from "../content/units";
-import type { UnitInstance } from "./types";
+import {
+  DOCTRINE_SUPPORT_AURA_DAMAGE,
+  DOCTRINE_SUPPORT_AURA_RANGE,
+  doctrineBallisticAsBonus,
+  doctrineSupportsAura,
+} from "./doctrine";
+import type { DoctrineId, UnitInstance } from "./types";
 
 export type EffectiveStats = {
   damage: number;
@@ -14,10 +20,14 @@ export type EffectiveStats = {
  * effectiveStats(unit) = scale(base, star) * meta multipliers.
  * Master Mason range mult applied to range.
  * Quick Assembly: +mergedAsBonus attack speed when fromMerge / star≥2 (Phase 5).
+ * Ballistic Overclock doctrine: +AS on Ballistic tags.
+ * Support Aura doctrine: nearby allies get +damage (caller passes board).
  */
 export function effectiveStats(
   unit: UnitInstance,
   meta?: { rangeMult?: number; mergedAsBonus?: number },
+  doctrineId: DoctrineId | null = null,
+  board: UnitInstance[] = [],
 ): EffectiveStats | null {
   const def = getUnitDef(unit.defId);
   if (!def) return null;
@@ -28,10 +38,30 @@ export function effectiveStats(
     meta?.mergedAsBonus && (unit.fromMerge || unit.starLevel >= 2)
       ? 1 + meta.mergedAsBonus
       : 1;
+  const ballisticAs =
+    def.tags.includes("Ballistic") && doctrineId
+      ? 1 + doctrineBallisticAsBonus(doctrineId)
+      : 1;
+
+  let auraDmg = 1;
+  if (doctrineSupportsAura(doctrineId) && unit.tile) {
+    for (const ally of board) {
+      if (!ally.tile || ally.instanceId === unit.instanceId) continue;
+      const allyDef = getUnitDef(ally.defId);
+      if (!allyDef?.tags.includes("Support")) continue;
+      const dist = Math.hypot(
+        ally.tile.x - unit.tile.x,
+        ally.tile.y - unit.tile.y,
+      );
+      if (dist <= DOCTRINE_SUPPORT_AURA_RANGE) {
+        auraDmg += DOCTRINE_SUPPORT_AURA_DAMAGE;
+      }
+    }
+  }
 
   return {
-    damage: def.stats.damage * starMult,
-    attackSpeed: def.stats.attackSpeed * starMult * asBonus,
+    damage: def.stats.damage * starMult * auraDmg,
+    attackSpeed: def.stats.attackSpeed * starMult * asBonus * ballisticAs,
     range: def.stats.range * starMult * rangeMult,
     aoeRadius: def.stats.aoeRadius * starMult,
     starMult,

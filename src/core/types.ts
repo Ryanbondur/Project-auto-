@@ -101,6 +101,8 @@ export type UnitInstance = {
   damageDealtWave: number;
   /** Cumulative damage dealt this run (survives merges via transfer). */
   damageDealtRun: number;
+  /** Hex agenda: silenced until this combat clock (ms). */
+  silencedUntilMs?: number;
 };
 
 export type CreepDef = {
@@ -112,6 +114,14 @@ export type CreepDef = {
   armor: number;
   leakDamage: number;
 };
+
+/** Wave creep roles beyond raw HP — escalate with wave/era; bosses combine. */
+export type CreepAgenda =
+  | "shielded"
+  | "regen"
+  | "splitter"
+  | "siege"
+  | "hex";
 
 export type CreepInstance = {
   instanceId: string;
@@ -129,6 +139,20 @@ export type CreepInstance = {
   x: number;
   y: number;
   alive: boolean;
+  /** Active agendas for this spawn (may be empty). */
+  agendas: CreepAgenda[];
+  /** Shielded: remaining absorb before HP. */
+  shieldHp: number;
+  /** Regen accumulator (ms). */
+  regenAccMs: number;
+  /** Hex: ms until next silence pulse. */
+  hexCooldownMs: number;
+  /** Named era boss flag (story boss, not catalog creep_boss alone). */
+  isBossCreep: boolean;
+  /** Optional display name override (era bosses). */
+  displayName?: string;
+  /** Era boss mechanic id when this is a story boss. */
+  bossMechanic?: EraBossMechanic | null;
 };
 
 export type WaveDef = {
@@ -251,6 +275,8 @@ export type RunEventId =
   | "gold_rerolls"
   | "board_slot_plus"
   | "path_slow_lane"
+  | "path_mutate"
+  | "draft_duel"
   | "interest_bonus"
   | "creep_hp_cut"
   | "ballistic_damage";
@@ -260,7 +286,115 @@ export type RunTraitId =
   | "ballistic_damage"
   | "interest_bonus"
   | "creep_hp_cut"
-  | "board_slot_plus";
+  | "board_slot_plus"
+  | "leak_brace";
+
+/** Commander Doctrine — pick 1 at New Run (persists for the run). */
+export type DoctrineId =
+  | "ballistic_overclock"
+  | "support_aura"
+  | "merge_gambler"
+  | "path_warden"
+  | "deep_coffers";
+
+export type DoctrineDef = {
+  id: DoctrineId;
+  name: string;
+  blurb: string;
+};
+
+/** Living path mutation kinds (era events / optional event choices). */
+export type PathMutationKind = "lengthen" | "add_bend" | "brief_fork";
+
+export type PathMutationResult =
+  | {
+      ok: true;
+      kind: PathMutationKind;
+      path: { x: number; y: number }[];
+      invalidated: { x: number; y: number }[];
+      message: string;
+      forkAnchor?: number;
+    }
+  | {
+      ok: false;
+      reason: string;
+      path: { x: number; y: number }[];
+      invalidated: { x: number; y: number }[];
+      message?: string;
+      forkAnchor?: number;
+    };
+
+/** Named era boss story beat. */
+export type EraBossId =
+  | "boss_path_splitter"
+  | "boss_gold_tax"
+  | "boss_shop_lock"
+  | "boss_silence_choir"
+  | "boss_endless_tax";
+
+export type EraBossMechanic =
+  | "path_splitter"
+  | "gold_tax"
+  | "disable_shop"
+  | "silence_pulse"
+  | "gold_tax_and_lock";
+
+export type EraBossLootEntry =
+  | { kind: "gold"; amount: number; weight: number }
+  | { kind: "trait"; traitId: RunTraitId; weight: number }
+  | { kind: "unit"; weight: number }
+  | { kind: "chip"; weight: number };
+
+export type EraBossDef = {
+  id: EraBossId;
+  name: string;
+  era: 1 | 2 | 3 | 4 | 5;
+  blurb: string;
+  mechanic: EraBossMechanic;
+  maxHp: number;
+  speed: number;
+  armor: number;
+  leakDamage: number;
+  agendas: CreepAgenda[];
+  loot: EraBossLootEntry[];
+};
+
+/** Draft duel — async single-player rival counter pick (once per era). */
+export type DraftCounterId =
+  | "anti_ballistic"
+  | "anti_swarm"
+  | "anti_siege"
+  | "anti_economy"
+  | "anti_tempo";
+
+export type DraftCounterDef = {
+  id: DraftCounterId;
+  name: string;
+  blurb: string;
+  rivalHint: string;
+};
+
+export type DraftRivalSummary = {
+  id: string;
+  codename: string;
+  archetype: string;
+  stats: { dps: string; economy: string; board: string };
+  counterId: DraftCounterId;
+  counterLabel: string;
+  counterBlurb: string;
+};
+
+export type DraftDuelState = {
+  rivals: DraftRivalSummary[];
+  era: number;
+};
+
+/** Transient HUD feedback (path mutate / boss / bench). */
+export type RunFeedback = {
+  id: string;
+  text: string;
+  ttlMs: number;
+};
 
 export type RunEventChoice = {
   id: RunEventId;
@@ -312,6 +446,12 @@ export type RunModifiers = {
   pathSlow: { pathIndex: number; wavesRemaining: number } | null;
   /** Ordered log of trait grants (stacks uncapped). */
   traits: RunTraitId[];
+  /** Flat leak damage reduction (min 1 per leak) — draft anti_siege etc. */
+  leakDamageReduction: number;
+  /** Shop locked for this prep (era boss Market Warden). */
+  shopDisabledThisPrep: boolean;
+  /** Living-path brief fork anchor (sabotage-style divert). */
+  pathFork: { pathIndex: number; wavesRemaining: number } | null;
 };
 
 export type RunState = {
@@ -377,4 +517,23 @@ export type RunState = {
   } | null;
   /** Combat: ms until next heal-pulse tick across board heal_pulse chips. */
   healPulseCooldownMs: number;
+  /** Commander Doctrine for this run (null only before pick / legacy). */
+  doctrineId: DoctrineId | null;
+  /**
+   * Living path tiles for this run (mutates on era events).
+   * Placement/combat use this — not the static MAP.path alone.
+   */
+  path: { x: number; y: number }[];
+  /** Pending draft duel sheet (after era discovery queue). */
+  draftDuel: DraftDuelState | null;
+  /** Last era for which draft duel was completed (0 = never). */
+  draftDuelCompletedEra: number;
+  /** Active draft counter for this segment (HUD chip). */
+  activeDraftCounter: DraftCounterId | null;
+  /** Named boss banner for the current/next boss wave. */
+  pendingEraBoss: EraBossId | null;
+  /** Combat clock (ms) for hex silence — advances during AUTOBATTLE. */
+  combatElapsedMs: number;
+  /** Short-lived HUD feedback messages. */
+  feedback: RunFeedback[];
 };

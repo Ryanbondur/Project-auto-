@@ -1,4 +1,4 @@
-import { MAP } from "../content/map";
+import { MAP, mapWithPath } from "../content/map";
 import { getCreepDef } from "../content/creeps";
 import { getUnitDef } from "../content/units";
 import { BASE_HP_HEAL_CAP } from "./constants";
@@ -10,6 +10,17 @@ import {
   chipLifestealFraction,
   chipPierceExtra,
 } from "./buffEffects";
+import {
+  applyDamageWithAgendas,
+  isUnitSilenced,
+  siegeArmorBonus,
+  siegeLeakBonus,
+  splitterChildCount,
+  splitterChildHp,
+  tickHex,
+  tickRegen,
+  initAgendaRuntime,
+} from "./creepAgendas";
 import type {
   CreepInstance,
   Projectile,
@@ -41,8 +52,13 @@ function healBase(state: RunState, amount: number): void {
   state.baseHp = Math.min(BASE_HP_HEAL_CAP, state.baseHp + amount);
 }
 
+function activeMap(state: RunState) {
+  return mapWithPath(state.path?.length ? state.path : MAP.path);
+}
+
 /**
  * Apply damage; returns total raw HP removed (pre-floor) for lifesteal accounting.
+ * Routes through shield agendas.
  */
 function applyDamageToCreep(
   creeps: CreepInstance[],
@@ -50,6 +66,7 @@ function applyDamageToCreep(
   damage: number,
   aoeRadius: number,
   impactPos: { x: number; y: number },
+  mapPathLen: number,
 ): number {
   let dealtTotal = 0;
   for (const creep of creeps) {
@@ -61,14 +78,11 @@ function applyDamageToCreep(
     const hitPrimary = creep.instanceId === creepId;
     const hitAoe = aoeRadius > 0 && dist <= aoeRadius;
     if (!hitPrimary && !hitAoe) continue;
-    const dealt = armorMitigation(damage, def.armor);
-    const before = creep.hp;
-    creep.hp -= dealt;
-    dealtTotal += Math.min(before, dealt);
-    if (creep.hp <= 0) {
-      creep.hp = 0;
-      creep.alive = false;
-    }
+    const segs = Math.max(1, mapPathLen - 1);
+    const p01 = (creep.pathIndex + creep.pathT) / segs;
+    const armor = def.armor + siegeArmorBonus(creep, p01);
+    const dealt = armorMitigation(damage, armor);
+    dealtTotal += applyDamageWithAgendas(creep, dealt);
   }
   return dealtTotal;
 }
@@ -78,6 +92,7 @@ function applyPierce(
   primaryId: string,
   damage: number,
   pierceExtra: number,
+  mapPathLen: number,
 ): number {
   if (pierceExtra <= 0) return 0;
   let dealt = 0;
@@ -95,6 +110,7 @@ function applyPierce(
       damage * 0.7,
       0,
       spos,
+      mapPathLen,
     );
   }
   return dealt;
@@ -109,30 +125,30 @@ export function projectileDrawPos(p: Projectile): { x: number; y: number } {
   return { x, y: y - arc };
 }
 
-/**
- * Resolve a projectile arrival: damage + pierce + optional lifesteal from
- * the firing unit (looked up by matching board chips via projectile metadata).
- */
 export function resolveProjectileHit(
   state: RunState,
   p: Projectile,
 ): number {
   const impact = { ...p.aim };
+  const pathLen = state.path?.length ?? 0;
   let dealt = applyDamageToCreep(
     state.creeps,
     p.toCreepId,
     p.damage,
     p.aoeRadius,
     { x: impact.x - 0.5, y: impact.y - 0.5 },
+    pathLen,
   );
-  dealt += applyPierce(state.creeps, p.toCreepId, p.damage, p.pierceExtra);
+  dealt += applyPierce(
+    state.creeps,
+    p.toCreepId,
+    p.damage,
+    p.pierceExtra,
+    pathLen,
+  );
   return dealt;
 }
 
-/**
- * Advance in-flight projectiles toward live (or last) aim points.
- * Damage resolves only when progress reaches 1 (arrival), not on fire.
- */
 export function advanceProjectiles(state: RunState, dtMs: number): void {
   const dt = dtMs / 1000;
   const remaining: Projectile[] = [];
@@ -176,12 +192,45 @@ export function advanceProjectiles(state: RunState, dtMs: number): void {
       if (p.lifestealFraction > 0 && dealt > 0) {
         healBase(state, Math.floor(dealt * p.lifestealFraction));
       }
+      // Splitter: spawn children when primary dies from this hit
+      spawnSplittersIfNeeded(state, p.toCreepId);
       continue;
     }
     remaining.push(p);
   }
 
   state.projectiles = remaining;
+}
+
+function spawnSplittersIfNeeded(state: RunState, creepId: string): void {
+  const parent = state.creeps.find((c) => c.instanceId === creepId);
+  if (!parent || parent.alive || parent.hp > 0) return;
+  // Only split once — mark by clearing splitter agenda
+  if (!(parent.agendas ?? []).includes("splitter")) return;
+  const count = splitterChildCount(parent);
+  parent.agendas = (parent.agendas ?? []).filter((a) => a !== "splitter");
+  const childHp = splitterChildHp(parent.maxHp, parent.isBossCreep);
+  const startIdx = Math.max(0, parent.pathIndex - 1);
+  for (let i = 0; i < count; i++) {
+    const child: CreepInstance = {
+      instanceId: `${parent.instanceId}_split_${i}`,
+      defId: "creep_swarm",
+      hp: childHp,
+      maxHp: childHp,
+      pathIndex: startIdx,
+      pathT: 0,
+      x: parent.x,
+      y: parent.y,
+      alive: true,
+      agendas: [],
+      shieldHp: 0,
+      regenAccMs: 0,
+      hexCooldownMs: 0,
+      isBossCreep: false,
+    };
+    initAgendaRuntime(child, []);
+    state.creeps.push(child);
+  }
 }
 
 function spawnProjectile(
@@ -246,14 +295,28 @@ export function tickCombat(
 ): CombatTickResult {
   const leakedIds: string[] = [];
   const clampedDt = Math.max(0, Math.min(dtMs, 50));
+  state.combatElapsedMs = (state.combatElapsedMs ?? 0) + clampedDt;
+  const nowMs = state.combatElapsedMs;
+  const map = activeMap(state);
+  // Ensure pathing uses runtime path
+  if (!state.path?.length) {
+    // Legacy runs without path field
+    const { MAP } = { MAP: map };
+    void MAP;
+  }
 
-  // 1) Continuous creep march along path (sub-tile pathT) + sabotage
+  // 1) Continuous creep march along path + agendas
   for (let i = 0; i < state.creeps.length; i++) {
     const creep = state.creeps[i]!;
     if (!creep.alive) continue;
     const def = getCreepDef(creep.defId);
     if (!def) continue;
+
+    tickRegen(creep, clampedDt);
+    tickHex(creep, clampedDt, state.board, nowMs);
+
     const eventSlow = state.modifiers?.pathSlow?.pathIndex ?? null;
+    const eventFork = state.modifiers?.pathFork?.pathIndex ?? null;
     const mult = sabotageSpeedMult(
       creep.pathIndex,
       state.pathSabotages,
@@ -263,26 +326,44 @@ export function tickCombat(
       creep.pathIndex,
       creep.pathT,
       state.pathSabotages,
-      MAP,
+      map,
+      eventFork,
     );
+    // Boss silence_pulse: faster hex (already via agendas)
+    const speed = def.speed;
     const { creep: moved, leaked } = moveCreepAlongPath(
       creep,
-      def.speed,
+      speed,
       clampedDt,
-      MAP,
+      map,
       mult,
       divert,
     );
     state.creeps[i] = moved;
     if (leaked) {
       leakedIds.push(moved.instanceId);
-      // Boss arena: leak signals arena fail to the store — never ends the run here.
       if (state.phase === "EVENT_ARENA") {
         moved.alive = false;
         state.creeps[i] = moved;
         return { leakedIds, defeated: false, waveComplete: false };
       }
-      const leak = applyLeak(state.baseHp, def);
+      const segs = Math.max(1, map.path.length - 1);
+      const p01 = (moved.pathIndex + moved.pathT) / segs;
+      const extraLeak = siegeLeakBonus(moved, p01);
+      // Named boss leak uses def leak; siege adds bonus
+      const leakDef = {
+        ...def,
+        leakDamage: Math.max(
+          def.leakDamage,
+          moved.isBossCreep ? def.leakDamage : def.leakDamage,
+        ),
+      };
+      const leak = applyLeak(
+        state.baseHp,
+        leakDef,
+        state.modifiers?.leakDamageReduction ?? 0,
+        extraLeak,
+      );
       state.baseHp = leak.baseHp;
       if (leak.defeated) {
         state.phase = "RUN_DEFEAT";
@@ -292,18 +373,25 @@ export function tickCombat(
     }
   }
 
-  // 2) Advance projectiles; hits resolve on arrival (lifesteal applied there)
+  // 2) Advance projectiles; hits resolve on arrival
   advanceProjectiles(state, clampedDt);
 
-  // 3) Heal-pulse chips tick independently of attacks
+  // 3) Heal-pulse chips
   tickHealPulses(state, clampedDt);
 
-  // 4) Fire boarded units when cooldown ready
+  // 4) Fire boarded units when cooldown ready (skip hex-silenced)
   for (const unit of state.board) {
     if (!unit.tile) continue;
     unit.cooldownMs = Math.max(0, unit.cooldownMs - clampedDt);
     if (unit.cooldownMs > 0) continue;
-    const stats = effectiveStats(unit, state.metaApplied);
+    if (isUnitSilenced(unit, nowMs)) continue;
+
+    const stats = effectiveStats(
+      unit,
+      state.metaApplied,
+      state.doctrineId ?? null,
+      state.board,
+    );
     if (!stats || stats.attackSpeed <= 0) continue;
 
     const defMap = new Map<string, NonNullable<ReturnType<typeof getCreepDef>>>();

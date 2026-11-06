@@ -6,8 +6,20 @@ import {
 import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { BUFF_CHIP_DEFS, getBuffChipDef } from "../content/buffChips";
 import { PATH_SABOTAGE_DEFS, getPathSabotageDef } from "../content/pathSabotage";
+import {
+  DOCTRINE_BALLISTIC_SHOP_WEIGHT,
+  doctrineBallisticShopBias,
+  doctrineChipChanceBonus,
+  doctrineSabotageCost,
+} from "./doctrine";
 import { createRng } from "./rng";
-import type { EraConfig, ShopOffer, ShopOfferKind, ShopState } from "./types";
+import type {
+  DoctrineId,
+  EraConfig,
+  ShopOffer,
+  ShopOfferKind,
+  ShopState,
+} from "./types";
 
 function unitsForEra(era: 1 | 2 | 3 | 4 | 5) {
   return UNIT_DEFS.filter((u) => u.era === era);
@@ -42,12 +54,28 @@ function pickUnitOffer(
   eraConfig: EraConfig,
   rand: () => number,
   slotIndex: number,
+  ballisticBias: boolean,
 ): ShopOffer {
   const era = pickWeightedEra(eraConfig.shopOdds, rand);
   let pool = unitsForEra(era);
   if (pool.length === 0) pool = unitsForEra(1);
   if (pool.length === 0) pool = UNIT_DEFS;
-  const def = pool[Math.floor(rand() * pool.length)] ?? UNIT_DEFS[0]!;
+  let def = pool[Math.floor(rand() * pool.length)] ?? UNIT_DEFS[0]!;
+  if (ballisticBias && pool.length > 0) {
+    // Weighted resample: Ballistic tags get DOCTRINE_BALLISTIC_SHOP_WEIGHT.
+    const weights = pool.map((u) =>
+      u.tags.includes("Ballistic") ? DOCTRINE_BALLISTIC_SHOP_WEIGHT : 1,
+    );
+    const total = weights.reduce((s, w) => s + w, 0);
+    let roll = rand() * total;
+    for (let i = 0; i < pool.length; i++) {
+      roll -= weights[i]!;
+      if (roll <= 0) {
+        def = pool[i]!;
+        break;
+      }
+    }
+  }
   return {
     slotIndex,
     kind: "unit",
@@ -66,9 +94,12 @@ export function rollShopOffers(
   eraConfig: EraConfig,
   seed: number,
   size: number = SHOP_SIZE,
+  doctrineId: DoctrineId | null = null,
 ): { offers: ShopOffer[]; nextSeed: number } {
   const rand = createRng(seed);
   const offers: ShopOffer[] = [];
+  const chipChance = SHOP_CHIP_CHANCE + doctrineChipChanceBonus(doctrineId);
+  const ballisticBias = doctrineBallisticShopBias(doctrineId);
 
   for (let i = 0; i < size; i++) {
     const roll = rand();
@@ -76,7 +107,7 @@ export function rollShopOffers(
     if (roll < SHOP_SABOTAGE_CHANCE && PATH_SABOTAGE_DEFS.length > 0) {
       kind = "path_sabotage";
     } else if (
-      roll < SHOP_SABOTAGE_CHANCE + SHOP_CHIP_CHANCE &&
+      roll < SHOP_SABOTAGE_CHANCE + chipChance &&
       BUFF_CHIP_DEFS.length > 0
     ) {
       kind = "buff_chip";
@@ -101,11 +132,11 @@ export function rollShopOffers(
         slotIndex: i,
         kind: "path_sabotage",
         defId: def.id,
-        cost: def.cost,
+        cost: doctrineSabotageCost(def.cost, doctrineId),
         purchased: false,
       });
     } else {
-      offers.push(pickUnitOffer(eraConfig, rand, i));
+      offers.push(pickUnitOffer(eraConfig, rand, i, ballisticBias));
     }
   }
 
@@ -118,8 +149,14 @@ export function createShopState(
   eraConfig: EraConfig,
   seed: number,
   size: number = SHOP_SIZE,
+  doctrineId: DoctrineId | null = null,
 ): { shop: ShopState; nextSeed: number } {
-  const { offers, nextSeed } = rollShopOffers(eraConfig, seed, size);
+  const { offers, nextSeed } = rollShopOffers(
+    eraConfig,
+    seed,
+    size,
+    doctrineId,
+  );
   return {
     shop: { offers, rerollCost: 1 },
     nextSeed,
