@@ -46,6 +46,8 @@ function unitWithChips(
     currentTargetId: null,
     chipInstanceIds: chipIds,
     fromMerge: false,
+    damageDealtWave: 0,
+    damageDealtRun: 0,
     ...overrides,
   };
 }
@@ -90,6 +92,7 @@ describe("buff craftsman combat hooks", () => {
     ];
     const proj: Projectile = {
       id: "p1",
+      sourceUnitId: "u1",
       from: { x: 2.5, y: 2.5 },
       pos: { x: 2.5, y: 2.5 },
       aim: { x: 2.5, y: 2.5 },
@@ -162,6 +165,7 @@ describe("buff craftsman combat hooks", () => {
     state.projectiles = [
       {
         id: "p1",
+        sourceUnitId: "u1",
         from: { x: 1.5, y: 2.5 },
         pos: { x: 1.5, y: 2.5 },
         aim: { x: 1.5, y: 2.5 },

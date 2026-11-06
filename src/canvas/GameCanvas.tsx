@@ -1,28 +1,39 @@
-import { useEffect, useRef, type PointerEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { TILE_SIZE_PX } from "../core/constants";
 import { MAP } from "../content/map";
 import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
+import { unitAtTile } from "../core/unitInspect";
 import { renderBoard } from "./renderer";
+import { tileFromPointer } from "./hitTest";
 import { useGameState } from "../ui/useGameState";
 
 /** Fixed sim step — keeps pathT / projectile progress continuous under load. */
 const FIXED_DT_MS = 1000 / 60;
 const MAX_STEPS_PER_FRAME = 5;
 const DRAG_THRESHOLD_PX = 10;
+/** Mobile hold-to-inspect (iPhone primary). */
 const LONG_PRESS_MS = 420;
+const HOLD_MOVE_PX = 12;
 
 export type GameCanvasProps = {
   /** Prep-only: start drag of a boarded unit (ghost owned by RunScreen). */
   onBoardUnitDragStart?: (
-    e: PointerEvent<HTMLCanvasElement>,
+    e: ReactPointerEvent<HTMLCanvasElement>,
     instanceId: string,
     label: string,
   ) => void;
-  onBoardUnitDragMove?: (e: PointerEvent<HTMLCanvasElement>) => void;
-  onBoardUnitDragUp?: (e: PointerEvent<HTMLCanvasElement>) => void;
+  onBoardUnitDragMove?: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
+  onBoardUnitDragUp?: (e: ReactPointerEvent<HTMLCanvasElement>) => void;
   onBoardUnitDragCancel?: () => void;
+  /** Sticky inspect (long-press). */
   onInspectUnit?: (instanceId: string) => void;
+  /** Ephemeral hover inspect (desktop pointer). */
+  onHoverUnit?: (instanceId: string | null) => void;
   /** True while an external drag ghost is active — skip tile click. */
   externalDragging?: boolean;
 };
@@ -33,7 +44,8 @@ export type GameCanvasProps = {
  * Prep also rAF-paints so unit idle breath stays alive without store churn.
  *
  * Pointer: tap empty/placeable tiles; drag boarded units to sell/merge;
- * long-press boarded unit opens inspect. No canvas pan — no fight with drag.
+ * long-press boarded unit opens inspect (prep + fight). Desktop hover
+ * shows ephemeral inspect. No canvas pan — no fight with drag.
  */
 export function GameCanvas({
   onBoardUnitDragStart,
@@ -41,6 +53,7 @@ export function GameCanvas({
   onBoardUnitDragUp,
   onBoardUnitDragCancel,
   onInspectUnit,
+  onHoverUnit,
   externalDragging = false,
 }: GameCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -64,6 +77,14 @@ export function GameCanvas({
 
   const width = MAP.width * TILE_SIZE_PX;
   const height = MAP.height * TILE_SIZE_PX;
+
+  const clearLong = () => {
+    const p = pressRef.current;
+    if (p?.longTimer != null) {
+      window.clearTimeout(p.longTimer);
+      p.longTimer = null;
+    }
+  };
 
   // Prep / menus: idle paint loop (breath / select rings) from live store
   useEffect(() => {
@@ -132,41 +153,53 @@ export function GameCanvas({
     };
   }, [fighting]);
 
-  const clientToTile = (e: PointerEvent<HTMLCanvasElement>) => {
+  useEffect(
+    () => () => {
+      clearLong();
+      pressRef.current = null;
+    },
+    [],
+  );
+
+  const unitUnderPointer = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
-    if (!canvas) return null;
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
-    const px = (e.clientX - rect.left) * scaleX;
-    const py = (e.clientY - rect.top) * scaleY;
-    const x = Math.floor(px / TILE_SIZE_PX);
-    const y = Math.floor(py / TILE_SIZE_PX);
-    if (x < 0 || y < 0 || x >= MAP.width || y >= MAP.height) return null;
-    return { x, y };
+    if (!canvas) return undefined;
+    const tile = tileFromPointer(canvas, e);
+    if (!tile) return undefined;
+    return unitAtTile(gameStore.getState().board, tile.x, tile.y);
   };
 
-  const unitAtTile = (x: number, y: number) => {
-    const snap = gameStore.getState();
-    return (
-      snap.board.find((u) => u.tile && u.tile.x === x && u.tile.y === y) ?? null
-    );
-  };
-
-  const clearLong = () => {
-    const p = pressRef.current;
-    if (p?.longTimer != null) {
-      window.clearTimeout(p.longTimer);
-      p.longTimer = null;
-    }
-  };
-
-  const onPointerDown = (e: PointerEvent<HTMLCanvasElement>) => {
+  const onPointerDown = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    if (fighting || !prep) return;
-    const tile = clientToTile(e);
+
+    // Fight / frozen menus: hold-to-inspect + hover only (no drag/place).
+    if (fighting || !prep) {
+      if (!onInspectUnit) return;
+      const unit = unitUnderPointer(e);
+      if (!unit) return;
+      pressRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
+        tileX: unit.tile?.x ?? 0,
+        tileY: unit.tile?.y ?? 0,
+        unitId: unit.instanceId,
+        dragging: false,
+        longTimer: window.setTimeout(() => {
+          const p = pressRef.current;
+          if (!p || p.dragging || !p.unitId) return;
+          onInspectUnit(p.unitId);
+          pressRef.current = null;
+        }, LONG_PRESS_MS),
+      };
+      return;
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const tile = tileFromPointer(canvas, e);
     if (!tile) return;
-    const unit = unitAtTile(tile.x, tile.y);
+    const unit = unitAtTile(gameStore.getState().board, tile.x, tile.y);
     pressRef.current = {
       pointerId: e.pointerId,
       startX: e.clientX,
@@ -188,17 +221,39 @@ export function GameCanvas({
     (e.currentTarget as HTMLCanvasElement).setPointerCapture?.(e.pointerId);
   };
 
-  const onPointerMove = (e: PointerEvent<HTMLCanvasElement>) => {
+  const onPointerMove = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const p = pressRef.current;
+
+    // Desktop hover inspect (secondary) — mouse only, no sticky overlay.
+    if (e.pointerType === "mouse" && onHoverUnit && !p?.dragging) {
+      const unit = unitUnderPointer(e);
+      onHoverUnit(unit?.instanceId ?? null);
+    }
+
     if (!p || p.pointerId !== e.pointerId) {
       onBoardUnitDragMove?.(e);
       return;
     }
+
+    // Cancel pending long-press if finger moves too far (fight or prep).
+    if (p.longTimer != null && !p.dragging) {
+      const dx = e.clientX - p.startX;
+      const dy = e.clientY - p.startY;
+      if (dx * dx + dy * dy > HOLD_MOVE_PX * HOLD_MOVE_PX) {
+        if (!prep || fighting) {
+          clearLong();
+          return;
+        }
+      }
+    }
+
+    if (!prep || fighting) return;
     if (!p.unitId) return;
     const dist = Math.hypot(e.clientX - p.startX, e.clientY - p.startY);
     if (!p.dragging && dist >= DRAG_THRESHOLD_PX) {
       clearLong();
       p.dragging = true;
+      onHoverUnit?.(null);
       const unit = gameStore
         .getState()
         .board.find((u) => u.instanceId === p.unitId);
@@ -211,7 +266,7 @@ export function GameCanvas({
     if (p.dragging) onBoardUnitDragMove?.(e);
   };
 
-  const onPointerUp = (e: PointerEvent<HTMLCanvasElement>) => {
+  const onPointerUp = (e: ReactPointerEvent<HTMLCanvasElement>) => {
     const p = pressRef.current;
     if (externalDragging || (p && p.dragging)) {
       onBoardUnitDragUp?.(e);
@@ -223,9 +278,15 @@ export function GameCanvas({
     clearLong();
     pressRef.current = null;
     if (e.pointerType === "mouse" && e.button !== 0) return;
-    const tile = clientToTile(e);
+
+    // Fight / non-prep: long-press already handled; short tap does nothing.
+    if (fighting || !prep) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const tile = tileFromPointer(canvas, e);
     if (!tile) return;
-    const unit = unitAtTile(tile.x, tile.y);
+    const unit = unitAtTile(gameStore.getState().board, tile.x, tile.y);
     if (unit) {
       const snap = gameStore.getState();
       gameStore.selectUnit(
@@ -242,6 +303,10 @@ export function GameCanvas({
     onBoardUnitDragCancel?.();
   };
 
+  const onPointerLeave = (e: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (e.pointerType === "mouse") onHoverUnit?.(null);
+  };
+
   return (
     <div className="board-wrap">
       <canvas
@@ -254,6 +319,7 @@ export function GameCanvas({
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerCancel}
+        onPointerLeave={onPointerLeave}
         role="img"
         aria-label="Game board grid"
       />

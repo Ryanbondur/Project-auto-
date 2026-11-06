@@ -97,6 +97,10 @@ export type UnitInstance = {
   chipInstanceIds: string[];
   /** True if this instance resulted from a merge (Quick Assembly meta hook). */
   fromMerge: boolean;
+  /** Damage dealt to creep HP this wave (reset on Ready). */
+  damageDealtWave: number;
+  /** Cumulative damage dealt this run (survives merges via transfer). */
+  damageDealtRun: number;
 };
 
 export type CreepDef = {
@@ -185,6 +189,8 @@ export type RunPhase =
  */
 export type Projectile = {
   id: string;
+  /** Board unit that fired this shot (damage attribution). */
+  sourceUnitId: string;
   /** Launch point (tile units, centers). */
   from: { x: number; y: number };
   /** Current interpolated position (tile units). */

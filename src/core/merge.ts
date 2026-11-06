@@ -195,6 +195,9 @@ export function autoMergePairwise(
       currentTargetId: null,
       chipInstanceIds: transferredChips,
       fromMerge: true,
+      damageDealtWave: 0,
+      damageDealtRun:
+        (a.unit.damageDealtRun ?? 0) + (b.unit.damageDealtRun ?? 0),
     };
 
     if (boardTile) {

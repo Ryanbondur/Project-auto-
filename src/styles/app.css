@@ -146,6 +146,14 @@ html.standalone body {
   flex: 1;
 }
 
+.board-stack {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .board-wrap {
   flex: 1 1 0;
   min-height: 0;
@@ -1013,6 +1021,341 @@ html.standalone body {
 
 .codex-meta {
   font-size: 0.68rem;
+}
+
+/* —— DPS floating chip / slim panel (minimal neon) —— */
+.dps-panel {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  pointer-events: none;
+}
+
+.dps-chip,
+.dps-sheet,
+.dps-scope,
+.dps-close {
+  pointer-events: auto;
+}
+
+.dps-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0 0.7rem;
+  border: 1px solid var(--atd-panel-edge);
+  border-radius: 999px;
+  background: var(--atd-panel);
+  color: var(--atd-cyan);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.dps-chip-peek {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--atd-text);
+  font-weight: 500;
+}
+
+.dps-sheet {
+  width: min(11.5rem, 72vw);
+  max-height: min(42dvh, 280px);
+  overflow: auto;
+  padding: 0.55rem 0.6rem 0.65rem;
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
+  border-radius: 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: dps-in 140ms ease-out;
+}
+
+@keyframes dps-in {
+  from {
+    opacity: 0.55;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.dps-sheet-head {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.4rem;
+}
+
+.dps-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--atd-text-dim);
+}
+
+.dps-scope {
+  margin-left: auto;
+  min-height: 36px;
+  padding: 0 0.55rem;
+  border: 1px solid rgba(46, 230, 255, 0.28);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--atd-cyan);
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.dps-close {
+  min-height: var(--touch);
+  min-width: var(--touch);
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--atd-text-dim);
+  font-size: 1.35rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.dps-empty {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--atd-text-dim);
+}
+
+.dps-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.dps-row-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.35rem;
+  margin-bottom: 0.15rem;
+}
+
+.dps-name {
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.dps-stars {
+  margin-left: 0.25rem;
+  font-size: 0.62rem;
+  color: var(--atd-gold);
+  letter-spacing: -0.04em;
+}
+
+.dps-num {
+  font-family: var(--mono);
+  font-size: 0.7rem;
+  color: var(--atd-cyan);
+  flex-shrink: 0;
+}
+
+.dps-bar-track {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(46, 230, 255, 0.12);
+  overflow: hidden;
+}
+
+.dps-bar-fill {
+  height: 100%;
+  background: var(--atd-cyan);
+  border-radius: 2px;
+  min-width: 0;
+  transition: width 120ms linear;
+}
+
+/* —— Unit inspect glass/neon card —— */
+.inspect-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(7, 11, 16, 0.45);
+  padding:
+    var(--safe-top)
+    var(--safe-right)
+    calc(0.55rem + var(--safe-bottom))
+    var(--safe-left);
+}
+
+.inspect-overlay.ephemeral {
+  background: transparent;
+  pointer-events: none;
+  align-items: center;
+  justify-content: flex-end;
+  padding-right: calc(0.75rem + var(--safe-right));
+}
+
+.inspect-overlay.ephemeral .inspect-card {
+  pointer-events: auto;
+  border-radius: 12px;
+  max-width: min(16rem, 78vw);
+  animation: inspect-fade 120ms ease-out;
+}
+
+.inspect-card {
+  width: min(100%, 360px);
+  padding: 0.85rem 0.95rem 1rem;
+  background: var(--atd-panel);
+  border: 1px solid var(--atd-panel-edge);
+  border-radius: 14px 14px 0 0;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: inspect-up 150ms ease-out;
+}
+
+@keyframes inspect-up {
+  from {
+    transform: translateY(10%);
+    opacity: 0.55;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes inspect-fade {
+  from {
+    opacity: 0.4;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.inspect-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+
+.inspect-name {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.inspect-sub {
+  margin: 0.2rem 0 0;
+  font-size: 0.72rem;
+  color: var(--atd-text-dim);
+}
+
+.inspect-close {
+  margin-left: auto;
+  min-height: var(--touch);
+  min-width: var(--touch);
+  border: none;
+  background: transparent;
+  color: var(--atd-text-dim);
+  font-size: 1.45rem;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  flex-shrink: 0;
+}
+
+.inspect-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+  margin: 0 0 0.65rem;
+}
+
+.inspect-stats div {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.inspect-stats dt {
+  margin: 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--atd-text-dim);
+}
+
+.inspect-stats dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 0.88rem;
+  color: var(--atd-text);
+}
+
+.inspect-buffs {
+  list-style: none;
+  margin: 0 0 0.45rem;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.inspect-buff-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid rgba(46, 230, 255, 0.35);
+  border-radius: 6px;
+  font-size: 0.68rem;
+  color: var(--atd-cyan);
+  background: rgba(46, 230, 255, 0.06);
+}
+
+.inspect-mods {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--atd-text-dim);
+  line-height: 1.35;
+}
+
+.run-screen.frozen .inspect-overlay,
+.run-screen.frozen .dps-panel {
+  pointer-events: auto;
 }
 
 /* —— Wider phones / small tablets —— */

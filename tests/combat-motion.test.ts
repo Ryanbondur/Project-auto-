@@ -6,6 +6,7 @@ import { createInitialRunState } from "../src/core/store";
 function flying(overrides: Partial<Projectile> = {}): Projectile {
   return {
     id: "p1",
+    sourceUnitId: "u_test",
     from: { x: 0, y: 0 },
     pos: { x: 0, y: 0 },
     aim: { x: 3, y: 0 },
