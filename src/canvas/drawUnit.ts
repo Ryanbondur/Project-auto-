@@ -1,17 +1,23 @@
 /**
- * Unit draw adapter — procedural silhouettes (art-swappable).
+ * Unit draw adapter — sprite atlas first, procedural silhouette fallback.
  * Combat stays art-blind; swap bodies / add sprite tables without touching sim.
- *
- * Future sprite hook:
- *   const frame = spriteTable[defId]?.[star]?.[anim];
- *   if (frame) drawImage(...); else drawProceduralSilhouette(...);
  */
 
 import { getUnitDef } from "../content/units";
 import { effectiveStats } from "../core/stats";
 import type { CreepInstance, RunState, UnitInstance } from "../core/types";
 import { creepWorldPos } from "../core/pathing";
+import {
+  drawBakedFrame,
+  ensureSpriteAtlas,
+  resolveUnitFrame,
+  type SpriteAnim,
+} from "./sprites";
 import { eraColor, shadeHex, theme, tintHex } from "./theme";
+import { unitRole, type UnitRole } from "./unitRole";
+
+export type { UnitRole };
+export { unitRole };
 
 export type DrawContext = {
   ctx: CanvasRenderingContext2D;
@@ -19,80 +25,6 @@ export type DrawContext = {
   /** rAF timestamp for idle breath / attack flash. */
   timeMs: number;
 };
-
-export type UnitRole =
-  | "melee"
-  | "ballistic"
-  | "siege"
-  | "support"
-  | "energy"
-  | "swarm"
-  | "generic";
-
-/** Map content tags / roleShape → silhouette family (sprite kits later key off defId). */
-export function unitRole(defId: string, tags: string[] = []): UnitRole {
-  const def = getUnitDef(defId);
-  if (def?.roleShape) return def.roleShape;
-  // Prefer explicit defId overrides for distinct roster reads
-  switch (defId) {
-    case "unit_spearman":
-    case "unit_knight":
-    case "unit_clubber":
-    case "unit_pikeman":
-    case "unit_steam_knight":
-    case "unit_riot_shield":
-    case "unit_plasma_blade":
-      return "melee";
-    case "unit_slinger":
-    case "unit_archer":
-    case "unit_musket":
-    case "unit_gatling":
-    case "unit_m16_soldier":
-    case "unit_sniper":
-    case "unit_net_hunter":
-    case "unit_crossbow":
-      return "ballistic";
-    case "unit_boulder_roll":
-    case "unit_catapult":
-    case "unit_cannon":
-    case "unit_rpg":
-    case "unit_rail_turret":
-    case "unit_sapper":
-    case "unit_mortar":
-      return "siege";
-    case "unit_tribe_drummer":
-    case "unit_monk":
-    case "unit_medic_steam":
-    case "unit_drone_spotter":
-    case "unit_shield_bot":
-    case "unit_banner_bearer":
-    case "unit_hack_node":
-      return "support";
-    case "unit_laser_grid":
-    case "unit_bone_shaman":
-    case "unit_flare_gunner":
-    case "unit_ew_jammer":
-    case "unit_orbit_laser":
-      return "energy";
-    case "unit_nano_swarm":
-    case "unit_torch_pack":
-    case "unit_war_hounds":
-    case "unit_coal_beetles":
-    case "unit_drone_swarm":
-    case "unit_pixel_mites":
-      return "swarm";
-    default:
-      break;
-  }
-  const t = tags.map((x) => x.toLowerCase());
-  if (t.some((x) => x.includes("melee"))) return "melee";
-  if (t.some((x) => x.includes("siege"))) return "siege";
-  if (t.some((x) => x.includes("support"))) return "support";
-  if (t.some((x) => x.includes("energy"))) return "energy";
-  if (t.some((x) => x.includes("swarm"))) return "swarm";
-  if (t.some((x) => x.includes("ballistic"))) return "ballistic";
-  return "generic";
-}
 
 function hashPhase(id: string): number {
   let h = 0;
@@ -187,7 +119,7 @@ function strokeBody(
   ctx.stroke();
 }
 
-/** Procedural silhouettes — distinct per role; era tint carries roster identity. */
+/** Procedural silhouettes — used only when atlas frame is missing. */
 function drawSilhouette(
   ctx: CanvasRenderingContext2D,
   role: UnitRole,
@@ -201,7 +133,6 @@ function drawSilhouette(
 
   switch (role) {
     case "melee": {
-      // Shield plate + spear tip forward (+x)
       ctx.beginPath();
       ctx.moveTo(-s * 0.22, -s * 0.42);
       ctx.lineTo(s * 0.18, -s * 0.38);
@@ -220,7 +151,6 @@ function drawSilhouette(
       break;
     }
     case "ballistic": {
-      // Compact chassis + barrel
       ctx.beginPath();
       ctx.moveTo(-s * 0.28, -s * 0.28);
       ctx.lineTo(s * 0.16, -s * 0.28);
@@ -246,7 +176,6 @@ function drawSilhouette(
       break;
     }
     case "siege": {
-      // Wide base + short barrel
       ctx.beginPath();
       ctx.moveTo(-s * 0.48, s * 0.32);
       ctx.lineTo(-s * 0.38, -s * 0.18);
@@ -273,7 +202,6 @@ function drawSilhouette(
       break;
     }
     case "support": {
-      // Soft disc + inner cross pip
       ctx.beginPath();
       ctx.arc(0, 0, s * 0.4, 0, Math.PI * 2);
       strokeBody(ctx, fill, edge);
@@ -285,7 +213,6 @@ function drawSilhouette(
       ctx.moveTo(0, -s * 0.16);
       ctx.lineTo(0, s * 0.16);
       ctx.stroke();
-      // Quiet aura breath ring
       ctx.strokeStyle = `rgba(46, 230, 255, ${0.12 + attackFlash * 0.2})`;
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -294,7 +221,6 @@ function drawSilhouette(
       break;
     }
     case "energy": {
-      // Angular diamond — cyber accent
       ctx.beginPath();
       ctx.moveTo(0, -s * 0.48);
       ctx.lineTo(s * 0.36, 0);
@@ -351,7 +277,7 @@ function drawSilhouette(
 
 /**
  * Thin unit adapter. Nameplates stay off-canvas (shop/bench only).
- * Range ring only while selected.
+ * Range ring only while selected. Sprites via atlas; missing → stub.
  */
 export function drawUnit(
   dc: DrawContext,
@@ -359,6 +285,7 @@ export function drawUnit(
   state: RunState,
 ): void {
   if (!unit.tile) return;
+  ensureSpriteAtlas();
   const def = getUnitDef(unit.defId);
   const { ctx, tileSize, timeMs } = dc;
   const cx = (unit.tile.x + 0.5) * tileSize;
@@ -370,26 +297,25 @@ export function drawUnit(
   const role = unitRole(unit.defId, def?.tags);
   const selected = state.selectedInstanceId === unit.instanceId;
 
-  // Size budget ≤ ~0.85 tile; star weight adds a hair of ring scale
   const starBoost = 1 + Math.min(unit.starLevel - 1, 4) * 0.025;
   const base = tileSize * 0.72 * starBoost;
   const phase = hashPhase(unit.instanceId);
   const breath = 1 + 0.028 * Math.sin(timeMs * 0.0032 + phase);
 
-  // Attack pose: cooldown just reset → near full period
   const atkSpeed = def?.stats.attackSpeed ?? 1;
   const period = 1000 / Math.max(0.05, atkSpeed);
   const justFired = unit.cooldownMs > period * 0.72;
   const attackFlash = justFired
     ? Math.min(1, (unit.cooldownMs - period * 0.72) / (period * 0.28))
     : 0;
+  const anim: SpriteAnim = justFired ? "fire" : "idle";
 
   const aim = targetWorld(unit, state.creeps);
-  let facing = -Math.PI / 2; // default up-ish idle
+  let facing = -Math.PI / 2;
   if (aim) {
     facing = Math.atan2(aim.y * tileSize - cy, aim.x * tileSize - cx);
   } else if (justFired) {
-    facing = 0; // slight forward lean when flashing without target
+    facing = 0;
   }
 
   if (selected) {
@@ -398,7 +324,6 @@ export function drawUnit(
     drawSelectRing(ctx, cx, cy, base * 0.48 * breath, tileSize <= 52);
   }
 
-  // Higher stars: slightly heavier outline ring under body
   if (unit.starLevel >= 2) {
     ctx.save();
     ctx.strokeStyle = `rgba(240, 193, 74, ${0.18 + Math.min(unit.starLevel, 5) * 0.05})`;
@@ -409,12 +334,17 @@ export function drawUnit(
     ctx.restore();
   }
 
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(facing);
-  ctx.scale(breath, breath);
-  drawSilhouette(ctx, role, base * 0.5, fill, edge, attackFlash);
-  ctx.restore();
+  const frame = resolveUnitFrame(unit.defId, anim, era);
+  if (frame) {
+    drawBakedFrame(ctx, frame, cx, cy, tileSize, facing, breath * starBoost);
+  } else {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(facing);
+    ctx.scale(breath, breath);
+    drawSilhouette(ctx, role, base * 0.5, fill, edge, attackFlash);
+    ctx.restore();
+  }
 
   drawStarPips(ctx, cx, cy, base * 0.5, unit.starLevel);
 }

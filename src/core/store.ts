@@ -692,6 +692,11 @@ export type GameStore = {
    * for neon skin visual captures (path + silhouettes + select).
    */
   debugSeedNeonSkinDemo: () => ActionResult;
+  /**
+   * Debug / screenshot helper: Era 1 unique sprites + later-era role kits
+   * for the sprite atlas art pass.
+   */
+  debugSeedSpriteArtDemo: () => ActionResult;
 };
 
 export function createStore(initial?: RunState): GameStore {
@@ -1371,6 +1376,38 @@ export function createStore(initial?: RunState): GameStore {
       next.board = boarded;
       next.bench = [];
       if (boarded[3]) next.selectedInstanceId = boarded[3]!.instanceId;
+      metaApi.revealCodex(roster.map((r) => r.defId));
+      setState(next);
+      return { ok: true };
+    },
+
+    /** Era 1 full roster + later-era tint kits for sprite atlas screenshots. */
+    debugSeedSpriteArtDemo: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      next.gold = Math.max(next.gold, 50);
+      next.currentEra = 1;
+      const roster: { defId: string; star: number; tile: { x: number; y: number } }[] = [
+        // Era 1 unique sprites
+        { defId: "unit_slinger", star: 1, tile: { x: 1, y: 1 } },
+        { defId: "unit_spearman", star: 2, tile: { x: 2, y: 3 } },
+        { defId: "unit_tribe_drummer", star: 2, tile: { x: 4, y: 1 } },
+        { defId: "unit_boulder_roll", star: 3, tile: { x: 5, y: 5 } },
+        // Later eras — role/era tint kits
+        { defId: "unit_archer", star: 1, tile: { x: 8, y: 3 } },
+        { defId: "unit_cannon", star: 2, tile: { x: 9, y: 8 } },
+        { defId: "unit_m16_soldier", star: 2, tile: { x: 11, y: 5 } },
+        { defId: "unit_laser_grid", star: 2, tile: { x: 12, y: 3 } },
+      ];
+      const path = next.path?.length ? next.path : cloneDefaultPath();
+      const boarded: UnitInstance[] = [];
+      for (const entry of roster) {
+        if (!isPlaceableTileOn(path, entry.tile.x, entry.tile.y)) continue;
+        boarded.push(makeUnit(entry.defId, entry.star, entry.tile));
+      }
+      next.board = boarded;
+      next.bench = [];
+      if (boarded[1]) next.selectedInstanceId = boarded[1]!.instanceId;
       metaApi.revealCodex(roster.map((r) => r.defId));
       setState(next);
       return { ok: true };
