@@ -1,4 +1,4 @@
-import { isPlaceableTile } from "../content/map";
+import { MAP, isPlaceableTileOn } from "../content/map";
 import type { UnitInstance } from "./types";
 
 export type PlaceResult =
@@ -23,13 +23,14 @@ export function tryPlaceOnBoard(
   instanceId: string,
   tile: { x: number; y: number },
   maxBoardSlots: number,
+  path: { x: number; y: number }[] = MAP.path,
 ): PlaceResult {
   const benchIdx = bench.findIndex((u) => u.instanceId === instanceId);
   if (benchIdx < 0) {
     // Already on board — allow reposition
     const boardIdx = board.findIndex((u) => u.instanceId === instanceId);
     if (boardIdx < 0) return { ok: false, reason: "unit_not_found" };
-    if (!isPlaceableTile(tile.x, tile.y)) {
+    if (!isPlaceableTileOn(path, tile.x, tile.y)) {
       return { ok: false, reason: "tile_not_placeable" };
     }
     const occ = occupiedKey(board);
@@ -47,7 +48,7 @@ export function tryPlaceOnBoard(
   if (board.length >= maxBoardSlots) {
     return { ok: false, reason: "board_full" };
   }
-  if (!isPlaceableTile(tile.x, tile.y)) {
+  if (!isPlaceableTileOn(path, tile.x, tile.y)) {
     return { ok: false, reason: "tile_not_placeable" };
   }
   if (occupiedKey(board).has(`${tile.x},${tile.y}`)) {

@@ -82,6 +82,18 @@ export const RUN_EVENT_DEFS: RunEventDef[] = [
     kind: "passive",
   },
   {
+    id: "path_mutate",
+    title: "Living path",
+    blurb: "The lane mutates — lengthen, bend, or brief fork. Towers on new path tiles auto-bench.",
+    kind: "passive",
+  },
+  {
+    id: "draft_duel",
+    title: "Draft duel",
+    blurb: "Scout 3 rival boards and pick a counter trait for the next segment.",
+    kind: "passive",
+  },
+  {
     id: "interest_bonus",
     title: "Interest bump",
     blurb: "+1 interest on the next wave payout.",
@@ -152,6 +164,9 @@ export function createEmptyModifiers(): RunModifiers {
     shopOfferBonusThisPrep: 0,
     pathSlow: null,
     traits: [],
+    leakDamageReduction: 0,
+    shopDisabledThisPrep: false,
+    pathFork: null,
   };
 }
 
@@ -221,6 +236,8 @@ export function rollEventChoices(
 export type ApplyEventResult =
   | { kind: "applied"; chestTraitLabel?: string }
   | { kind: "start_boss_arena" }
+  | { kind: "path_mutate" }
+  | { kind: "start_draft_duel" }
   | { kind: "cannot_afford" };
 
 /**
@@ -269,6 +286,10 @@ export function applyRunEvent(
         wavesRemaining: 3,
       };
       break;
+    case "path_mutate":
+      return { kind: "path_mutate" };
+    case "draft_duel":
+      return { kind: "start_draft_duel" };
     case "interest_bonus":
       m.interestBonusNextPayout += 1;
       m.traits.push("interest_bonus");
@@ -290,12 +311,19 @@ export function applyRunEvent(
   return { kind: "applied" };
 }
 
-/** Tick path-slow duration after a wave clears (call once per cleared wave). */
+/** Tick path-slow / path-fork duration after a wave clears. */
 export function tickPathSlowAfterWave(modifiers: RunModifiers): void {
-  if (!modifiers.pathSlow) return;
-  modifiers.pathSlow.wavesRemaining -= 1;
-  if (modifiers.pathSlow.wavesRemaining <= 0) {
-    modifiers.pathSlow = null;
+  if (modifiers.pathSlow) {
+    modifiers.pathSlow.wavesRemaining -= 1;
+    if (modifiers.pathSlow.wavesRemaining <= 0) {
+      modifiers.pathSlow = null;
+    }
+  }
+  if (modifiers.pathFork) {
+    modifiers.pathFork.wavesRemaining -= 1;
+    if (modifiers.pathFork.wavesRemaining <= 0) {
+      modifiers.pathFork = null;
+    }
   }
 }
 

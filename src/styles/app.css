@@ -1743,3 +1743,54 @@ html.standalone body {
 .ready-row {
   flex-wrap: wrap;
 }
+
+/* —— Spice pack: doctrine / draft / feedback —— */
+.doctrine-chip .stat-value,
+.draft-chip .stat-value {
+  font-size: 0.72rem;
+  color: var(--atd-cyan);
+}
+.boss-chip .stat-value {
+  font-size: 0.72rem;
+  color: var(--atd-magenta);
+}
+
+.doctrine-sheet {
+  max-height: min(86dvh, 640px);
+}
+.doctrine-cancel {
+  width: 100%;
+  margin-top: 0.65rem;
+  min-height: 44px;
+}
+
+.draft-counter-label {
+  margin-top: 0.2rem;
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--atd-cyan);
+}
+
+.run-feedback {
+  position: absolute;
+  top: 0.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  pointer-events: none;
+  width: min(92%, 340px);
+}
+.run-feedback-item {
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--atd-text);
+  background: color-mix(in srgb, var(--atd-panel) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--atd-cyan) 35%, transparent);
+  border-radius: 8px;
+}

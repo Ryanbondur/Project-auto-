@@ -1,3 +1,4 @@
+import { cloneDefaultPath } from "../content/map";
 import type { MetaState, RunState, SkillId } from "../core/types";
 
 /**
@@ -138,6 +139,9 @@ function normalizeLoadedRun(run: RunState): RunState {
     shopOfferBonusThisPrep: 0,
     pathSlow: null,
     traits: [],
+    leakDamageReduction: 0,
+    shopDisabledThisPrep: false,
+    pathFork: null,
   };
   if (typeof modifiers.boardSlotsBonus !== "number") modifiers.boardSlotsBonus = 0;
   if (typeof modifiers.ballisticDamageBonus !== "number") {
@@ -155,6 +159,15 @@ function normalizeLoadedRun(run: RunState): RunState {
     modifiers.pathSlow = null;
   }
   if (!Array.isArray(modifiers.traits)) modifiers.traits = [];
+  if (typeof modifiers.leakDamageReduction !== "number") {
+    modifiers.leakDamageReduction = 0;
+  }
+  if (typeof modifiers.shopDisabledThisPrep !== "boolean") {
+    modifiers.shopDisabledThisPrep = false;
+  }
+  if (modifiers.pathFork && typeof modifiers.pathFork.pathIndex !== "number") {
+    modifiers.pathFork = null;
+  }
   const eventChoice = run.eventChoice ?? null;
   const arena = run.arena ?? null;
   const autoMergeEnabled =
@@ -162,7 +175,44 @@ function normalizeLoadedRun(run: RunState): RunState {
   if (run.waveRuntime && typeof run.waveRuntime.eventHpMult !== "number") {
     run.waveRuntime.eventHpMult = 1;
   }
-  return { ...run, gambit, modifiers, eventChoice, arena, autoMergeEnabled };
+  for (const creep of run.creeps ?? []) {
+    if (!Array.isArray(creep.agendas)) creep.agendas = [];
+    if (typeof creep.shieldHp !== "number") creep.shieldHp = 0;
+    if (typeof creep.regenAccMs !== "number") creep.regenAccMs = 0;
+    if (typeof creep.hexCooldownMs !== "number") creep.hexCooldownMs = 0;
+    if (typeof creep.isBossCreep !== "boolean") {
+      creep.isBossCreep = Boolean(creep.defId === "creep_boss");
+    }
+  }
+  const doctrineId = run.doctrineId ?? null;
+  const path =
+    Array.isArray(run.path) && run.path.length > 0
+      ? run.path
+      : cloneDefaultPath();
+  const draftDuel = run.draftDuel ?? null;
+  const draftDuelCompletedEra =
+    typeof run.draftDuelCompletedEra === "number" ? run.draftDuelCompletedEra : 0;
+  const activeDraftCounter = run.activeDraftCounter ?? null;
+  const pendingEraBoss = run.pendingEraBoss ?? null;
+  const combatElapsedMs =
+    typeof run.combatElapsedMs === "number" ? run.combatElapsedMs : 0;
+  const feedback = Array.isArray(run.feedback) ? run.feedback : [];
+  return {
+    ...run,
+    gambit,
+    modifiers,
+    eventChoice,
+    arena,
+    autoMergeEnabled,
+    doctrineId,
+    path,
+    draftDuel,
+    draftDuelCompletedEra,
+    activeDraftCounter,
+    pendingEraBoss,
+    combatElapsedMs,
+    feedback,
+  };
 }
 
 export function loadActiveRun(
