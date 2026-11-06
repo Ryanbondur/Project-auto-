@@ -1,17 +1,20 @@
 import type { UnitDef } from "../core/types";
 
 /**
- * Placeholder roster: 4 units per era (20 total) for shop + Era Discovery variety.
- * Stats scale roughly with era/cost. Abilities are string stubs.
+ * Expanded roster (~8 per era) for shop + Era Discovery variety.
+ * Distinct roles: melee / ballistic / siege / support / energy / swarm.
+ * `roleShape` + `accentColor` are placeholder draw hints (art sprites land separately).
  */
 export const UNIT_DEFS: UnitDef[] = [
-  // —— Era 1 Primitive / Ancient ——
+  // —— Era 1 Primitive / Ancient (8) ——
   {
     id: "unit_slinger",
     name: "Slinger",
     era: 1,
     cost: 1,
     tags: ["Ballistic", "Primitive"],
+    roleShape: "ballistic",
+    accentColor: "#C4A574",
     stats: { damage: 8, attackSpeed: 1.0, range: 3.0, aoeRadius: 0 },
     abilities: {
       starLevel2: "Throws faster after first hit on a target.",
@@ -24,6 +27,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 1,
     cost: 2,
     tags: ["Melee", "Primitive"],
+    roleShape: "melee",
+    accentColor: "#B8956A",
     stats: { damage: 18, attackSpeed: 0.7, range: 1.5, aoeRadius: 0 },
     abilities: {
       starLevel2: "First attack on a creep deals bonus damage.",
@@ -36,6 +41,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 1,
     cost: 3,
     tags: ["Support", "Primitive"],
+    roleShape: "support",
+    accentColor: "#A67C52",
     stats: { damage: 6, attackSpeed: 0.9, range: 2.5, aoeRadius: 1.0 },
     abilities: {
       starLevel2: "Nearby allies gain a small attack-speed aura.",
@@ -48,19 +55,79 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 1,
     cost: 3,
     tags: ["Siege", "Primitive"],
+    roleShape: "siege",
+    accentColor: "#8B7355",
     stats: { damage: 28, attackSpeed: 0.4, range: 2.0, aoeRadius: 1.2 },
     abilities: {
       starLevel2: "Boulder knocks creeps slightly back along the path.",
       starLevel3: "Larger impact radius.",
     },
   },
-  // —— Era 2 Medieval / Feudal ——
+  {
+    id: "unit_clubber",
+    name: "Clubber",
+    era: 1,
+    cost: 1,
+    tags: ["Melee", "Primitive"],
+    roleShape: "melee",
+    accentColor: "#9A7B4F",
+    stats: { damage: 14, attackSpeed: 0.85, range: 1.4, aoeRadius: 0 },
+    abilities: {
+      starLevel2: "Cleaves a second nearby creep for half damage.",
+      starLevel3: "Stuns briefly on crit.",
+    },
+  },
+  {
+    id: "unit_net_hunter",
+    name: "Net Hunter",
+    era: 1,
+    cost: 2,
+    tags: ["Ballistic", "Primitive"],
+    roleShape: "ballistic",
+    accentColor: "#D2B48C",
+    stats: { damage: 10, attackSpeed: 0.95, range: 3.2, aoeRadius: 0 },
+    abilities: {
+      starLevel2: "Nets briefly slow the target.",
+      starLevel3: "Net spreads to one nearby creep.",
+    },
+  },
+  {
+    id: "unit_torch_pack",
+    name: "Torch Pack",
+    era: 1,
+    cost: 2,
+    tags: ["Swarm", "Primitive"],
+    roleShape: "swarm",
+    accentColor: "#E07A3D",
+    stats: { damage: 7, attackSpeed: 1.6, range: 2.2, aoeRadius: 0.9 },
+    abilities: {
+      starLevel2: "Burn DoT stacks on creeps in the pack.",
+      starLevel3: "Pack expands after a kill.",
+    },
+  },
+  {
+    id: "unit_bone_shaman",
+    name: "Bone Shaman",
+    era: 1,
+    cost: 4,
+    tags: ["Energy", "Support", "Primitive"],
+    roleShape: "energy",
+    accentColor: "#C9A0DC",
+    stats: { damage: 12, attackSpeed: 0.8, range: 2.8, aoeRadius: 0.7 },
+    abilities: {
+      starLevel2: "Hex pulse: brief silence on nearest creep.",
+      starLevel3: "Allies in range gain a small shield.",
+    },
+  },
+  // —— Era 2 Medieval / Feudal (8) ——
   {
     id: "unit_archer",
     name: "Archer",
     era: 2,
     cost: 2,
     tags: ["Ballistic", "Medieval"],
+    roleShape: "ballistic",
+    accentColor: "#8FB36A",
     stats: { damage: 14, attackSpeed: 1.1, range: 3.5, aoeRadius: 0 },
     abilities: {
       starLevel2: "Volley: every 4th shot fires two arrows.",
@@ -73,6 +140,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 2,
     cost: 3,
     tags: ["Melee", "Medieval"],
+    roleShape: "melee",
+    accentColor: "#6B8F4E",
     stats: { damage: 26, attackSpeed: 0.65, range: 1.6, aoeRadius: 0 },
     abilities: {
       starLevel2: "Charges the first creep in range for bonus damage.",
@@ -85,6 +154,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 2,
     cost: 4,
     tags: ["Siege", "Medieval"],
+    roleShape: "siege",
+    accentColor: "#7A6A4A",
     stats: { damage: 40, attackSpeed: 0.35, range: 4.0, aoeRadius: 1.4 },
     abilities: {
       starLevel2: "Shells leave a short burn zone.",
@@ -97,19 +168,79 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 2,
     cost: 3,
     tags: ["Support", "Medieval"],
+    roleShape: "support",
+    accentColor: "#A8C686",
     stats: { damage: 8, attackSpeed: 0.85, range: 2.8, aoeRadius: 0.8 },
     abilities: {
       starLevel2: "Pulses a small heal to nearby allies.",
       starLevel3: "Heal pulse also cleanses one debuff.",
     },
   },
-  // —— Era 3 Industrial / Steam ——
+  {
+    id: "unit_pikeman",
+    name: "Pikeman",
+    era: 2,
+    cost: 2,
+    tags: ["Melee", "Medieval"],
+    roleShape: "melee",
+    accentColor: "#739956",
+    stats: { damage: 20, attackSpeed: 0.75, range: 1.8, aoeRadius: 0 },
+    abilities: {
+      starLevel2: "Long reach: +0.3 range.",
+      starLevel3: "Impales — pierce one creep behind.",
+    },
+  },
+  {
+    id: "unit_crossbow",
+    name: "Crossbow",
+    era: 2,
+    cost: 3,
+    tags: ["Ballistic", "Medieval"],
+    roleShape: "ballistic",
+    accentColor: "#9BC47A",
+    stats: { damage: 28, attackSpeed: 0.7, range: 4.0, aoeRadius: 0 },
+    abilities: {
+      starLevel2: "Bolts ignore a portion of armor.",
+      starLevel3: "Reload burst after a kill.",
+    },
+  },
+  {
+    id: "unit_war_hounds",
+    name: "War Hounds",
+    era: 2,
+    cost: 2,
+    tags: ["Swarm", "Medieval"],
+    roleShape: "swarm",
+    accentColor: "#B8860B",
+    stats: { damage: 9, attackSpeed: 1.7, range: 2.0, aoeRadius: 0.8 },
+    abilities: {
+      starLevel2: "Pack flanks: bonus vs runners.",
+      starLevel3: "Howl: brief attack-speed aura.",
+    },
+  },
+  {
+    id: "unit_banner_bearer",
+    name: "Banner Bearer",
+    era: 2,
+    cost: 4,
+    tags: ["Support", "Medieval"],
+    roleShape: "support",
+    accentColor: "#C4D4A0",
+    stats: { damage: 10, attackSpeed: 0.9, range: 3.0, aoeRadius: 1.1 },
+    abilities: {
+      starLevel2: "Banner aura: nearby allies +damage.",
+      starLevel3: "Rally: short AS burst on wave start.",
+    },
+  },
+  // —— Era 3 Industrial / Steam (8) ——
   {
     id: "unit_musket",
     name: "Musket Line",
     era: 3,
     cost: 2,
     tags: ["Ballistic", "Industrial"],
+    roleShape: "ballistic",
+    accentColor: "#D4A017",
     stats: { damage: 22, attackSpeed: 0.9, range: 3.8, aoeRadius: 0 },
     abilities: {
       starLevel2: "Reload burst after killing a creep.",
@@ -122,6 +253,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 3,
     cost: 4,
     tags: ["Siege", "Industrial"],
+    roleShape: "siege",
+    accentColor: "#B8860B",
     stats: { damage: 55, attackSpeed: 0.32, range: 4.2, aoeRadius: 1.5 },
     abilities: {
       starLevel2: "Shells stagger creeps (brief slow).",
@@ -134,6 +267,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 3,
     cost: 5,
     tags: ["Ballistic", "Industrial"],
+    roleShape: "ballistic",
+    accentColor: "#C9A227",
     stats: { damage: 12, attackSpeed: 2.2, range: 3.2, aoeRadius: 0 },
     abilities: {
       starLevel2: "Spin-up: attack speed rises while firing the same target.",
@@ -146,19 +281,79 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 3,
     cost: 3,
     tags: ["Support", "Industrial"],
+    roleShape: "support",
+    accentColor: "#E8C547",
     stats: { damage: 10, attackSpeed: 1.0, range: 2.6, aoeRadius: 1.0 },
     abilities: {
       starLevel2: "Repairs nearby allies (placeholder heal pulse).",
       starLevel3: "Emergency vent: AoE slow on creeps.",
     },
   },
-  // —— Era 4 Modern Warfare ——
+  {
+    id: "unit_steam_knight",
+    name: "Steam Knight",
+    era: 3,
+    cost: 4,
+    tags: ["Melee", "Industrial"],
+    roleShape: "melee",
+    accentColor: "#A89040",
+    stats: { damage: 38, attackSpeed: 0.6, range: 1.7, aoeRadius: 0.4 },
+    abilities: {
+      starLevel2: "Piston smash: knockback on hit.",
+      starLevel3: "Pressure vent: small AoE around target.",
+    },
+  },
+  {
+    id: "unit_sapper",
+    name: "Sapper",
+    era: 3,
+    cost: 3,
+    tags: ["Siege", "Industrial"],
+    roleShape: "siege",
+    accentColor: "#8B6914",
+    stats: { damage: 45, attackSpeed: 0.4, range: 3.0, aoeRadius: 1.3 },
+    abilities: {
+      starLevel2: "Mines linger briefly on the path.",
+      starLevel3: "Bigger blast vs tanks/bosses.",
+    },
+  },
+  {
+    id: "unit_flare_gunner",
+    name: "Flare Gunner",
+    era: 3,
+    cost: 3,
+    tags: ["Energy", "Industrial"],
+    roleShape: "energy",
+    accentColor: "#FFB347",
+    stats: { damage: 18, attackSpeed: 1.15, range: 3.5, aoeRadius: 0.5 },
+    abilities: {
+      starLevel2: "Flares mark creeps; allies gain slight accuracy.",
+      starLevel3: "Blind flash: brief slow in a ring.",
+    },
+  },
+  {
+    id: "unit_coal_beetles",
+    name: "Coal Beetles",
+    era: 3,
+    cost: 2,
+    tags: ["Swarm", "Industrial"],
+    roleShape: "swarm",
+    accentColor: "#5C4033",
+    stats: { damage: 11, attackSpeed: 1.9, range: 2.4, aoeRadius: 1.0 },
+    abilities: {
+      starLevel2: "Sparks stack burn DoT.",
+      starLevel3: "Swarm splits on kill.",
+    },
+  },
+  // —— Era 4 Modern Warfare (8) ——
   {
     id: "unit_m16_soldier",
     name: "M16 Infantry",
     era: 4,
     cost: 4,
     tags: ["Ballistic", "Modern"],
+    roleShape: "ballistic",
+    accentColor: "#5B8CFF",
     stats: { damage: 45, attackSpeed: 1.2, range: 3.5, aoeRadius: 0 },
     abilities: {
       starLevel2: "Gains +20% Attack Speed burst on target switch.",
@@ -171,6 +366,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 4,
     cost: 5,
     tags: ["Ballistic", "Modern"],
+    roleShape: "ballistic",
+    accentColor: "#4A7AE0",
     stats: { damage: 90, attackSpeed: 0.45, range: 5.5, aoeRadius: 0 },
     abilities: {
       starLevel2: "Marks the strongest creep for bonus damage.",
@@ -183,6 +380,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 4,
     cost: 5,
     tags: ["Siege", "Modern"],
+    roleShape: "siege",
+    accentColor: "#3D6FD0",
     stats: { damage: 70, attackSpeed: 0.4, range: 4.0, aoeRadius: 1.6 },
     abilities: {
       starLevel2: "Blast knocks creeps back slightly.",
@@ -195,19 +394,79 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 4,
     cost: 3,
     tags: ["Support", "Modern"],
+    roleShape: "support",
+    accentColor: "#7AA2FF",
     stats: { damage: 14, attackSpeed: 1.1, range: 4.0, aoeRadius: 0.6 },
     abilities: {
       starLevel2: "Reveals creeps; allies gain slight range.",
       starLevel3: "Laser designate: shared damage amp.",
     },
   },
-  // —— Era 5 Futuristic / Cyber ——
+  {
+    id: "unit_riot_shield",
+    name: "Riot Shield",
+    era: 4,
+    cost: 3,
+    tags: ["Melee", "Modern"],
+    roleShape: "melee",
+    accentColor: "#6B8FE8",
+    stats: { damage: 42, attackSpeed: 0.7, range: 1.5, aoeRadius: 0 },
+    abilities: {
+      starLevel2: "Bash: brief stun on first hit.",
+      starLevel3: "Allies behind gain a small damage soak.",
+    },
+  },
+  {
+    id: "unit_mortar",
+    name: "Mortar",
+    era: 4,
+    cost: 4,
+    tags: ["Siege", "Modern"],
+    roleShape: "siege",
+    accentColor: "#2E5AB8",
+    stats: { damage: 65, attackSpeed: 0.36, range: 5.0, aoeRadius: 1.7 },
+    abilities: {
+      starLevel2: "Arcing shell — ignores front blockers.",
+      starLevel3: "Cluster munitions: second small blast.",
+    },
+  },
+  {
+    id: "unit_ew_jammer",
+    name: "EW Jammer",
+    era: 4,
+    cost: 4,
+    tags: ["Energy", "Support", "Modern"],
+    roleShape: "energy",
+    accentColor: "#89CFF0",
+    stats: { damage: 20, attackSpeed: 1.0, range: 3.4, aoeRadius: 1.0 },
+    abilities: {
+      starLevel2: "Jams hex agendas nearby (slower pulses).",
+      starLevel3: "Pulse: short silence on creeps in ring.",
+    },
+  },
+  {
+    id: "unit_drone_swarm",
+    name: "Drone Swarm",
+    era: 4,
+    cost: 3,
+    tags: ["Swarm", "Modern"],
+    roleShape: "swarm",
+    accentColor: "#88A8E8",
+    stats: { damage: 16, attackSpeed: 1.85, range: 3.0, aoeRadius: 1.1 },
+    abilities: {
+      starLevel2: "Micro-munitions stack shred.",
+      starLevel3: "Resupply: swarm grows after a boss hit.",
+    },
+  },
+  // —— Era 5 Futuristic / Cyber (8) ——
   {
     id: "unit_laser_grid",
     name: "Laser Grid",
     era: 5,
     cost: 4,
     tags: ["Energy", "Cyber"],
+    roleShape: "energy",
+    accentColor: "#B388FF",
     stats: { damage: 35, attackSpeed: 1.4, range: 3.6, aoeRadius: 0.4 },
     abilities: {
       starLevel2: "Beams chain to a second creep.",
@@ -220,6 +479,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 5,
     cost: 3,
     tags: ["Swarm", "Cyber"],
+    roleShape: "swarm",
+    accentColor: "#9B6DFF",
     stats: { damage: 18, attackSpeed: 1.8, range: 2.8, aoeRadius: 1.2 },
     abilities: {
       starLevel2: "Dots stack on creeps in the cloud.",
@@ -232,6 +493,8 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 5,
     cost: 4,
     tags: ["Support", "Cyber"],
+    roleShape: "support",
+    accentColor: "#C4A8FF",
     stats: { damage: 16, attackSpeed: 1.0, range: 3.0, aoeRadius: 1.0 },
     abilities: {
       starLevel2: "Projects a damage-absorb bubble on allies.",
@@ -244,16 +507,79 @@ export const UNIT_DEFS: UnitDef[] = [
     era: 5,
     cost: 5,
     tags: ["Siege", "Cyber"],
+    roleShape: "siege",
+    accentColor: "#8A5CF5",
     stats: { damage: 110, attackSpeed: 0.38, range: 5.0, aoeRadius: 0.3 },
     abilities: {
       starLevel2: "Pierces through the first creep hit.",
       starLevel3: "Charged shot stuns briefly.",
     },
   },
+  {
+    id: "unit_plasma_blade",
+    name: "Plasma Blade",
+    era: 5,
+    cost: 4,
+    tags: ["Melee", "Cyber"],
+    roleShape: "melee",
+    accentColor: "#D4B0FF",
+    stats: { damage: 55, attackSpeed: 0.85, range: 1.6, aoeRadius: 0.5 },
+    abilities: {
+      starLevel2: "Blade arc hits a second creep.",
+      starLevel3: "Overclock: AS surge on kill.",
+    },
+  },
+  {
+    id: "unit_orbit_laser",
+    name: "Orbit Laser",
+    era: 5,
+    cost: 5,
+    tags: ["Energy", "Cyber"],
+    roleShape: "energy",
+    accentColor: "#2EE6FF",
+    stats: { damage: 48, attackSpeed: 1.1, range: 4.5, aoeRadius: 0.6 },
+    abilities: {
+      starLevel2: "Orbital beam tracks for a short dwell.",
+      starLevel3: "Strike leaves a burn ring.",
+    },
+  },
+  {
+    id: "unit_hack_node",
+    name: "Hack Node",
+    era: 5,
+    cost: 3,
+    tags: ["Support", "Energy", "Cyber"],
+    roleShape: "support",
+    accentColor: "#A0E8FF",
+    stats: { damage: 14, attackSpeed: 1.05, range: 3.2, aoeRadius: 0.9 },
+    abilities: {
+      starLevel2: "Hacks reduce nearby creep armor briefly.",
+      starLevel3: "Allies gain a small energy damage amp.",
+    },
+  },
+  {
+    id: "unit_pixel_mites",
+    name: "Pixel Mites",
+    era: 5,
+    cost: 2,
+    tags: ["Swarm", "Cyber"],
+    roleShape: "swarm",
+    accentColor: "#FF2EC8",
+    stats: { damage: 14, attackSpeed: 2.0, range: 2.6, aoeRadius: 1.15 },
+    abilities: {
+      starLevel2: "Glitch DoT stacks fast.",
+      starLevel3: "Mites fork on boss death.",
+    },
+  },
 ];
 
 export function getUnitDef(id: string): UnitDef | undefined {
   return UNIT_DEFS.find((u) => u.id === id);
+}
+
+/** Units in an era bucket (shop / discovery). */
+export function unitsInEra(era: 1 | 2 | 3 | 4 | 5): UnitDef[] {
+  return UNIT_DEFS.filter((u) => u.era === era);
 }
 
 /**

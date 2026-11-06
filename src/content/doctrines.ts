@@ -30,6 +30,21 @@ export const DOCTRINE_DEFS: DoctrineDef[] = [
     name: "Deep Coffers",
     blurb: "+5 starting gold. +1 interest on every wave payout.",
   },
+  {
+    id: "siege_battery",
+    name: "Siege Battery",
+    blurb: "Siege shop weight up. Siege units +12% damage.",
+  },
+  {
+    id: "swarm_tide",
+    name: "Swarm Tide",
+    blurb: "Swarm & Energy shop weight up. Swarm units +15% attack speed.",
+  },
+  {
+    id: "iron_curtain",
+    name: "Iron Curtain",
+    blurb: "+1 board slot. Leaks deal 1 less damage (min 1).",
+  },
 ];
 
 export function getDoctrineDef(id: DoctrineId): DoctrineDef | undefined {
@@ -46,6 +61,9 @@ export function doctrineShortLabel(id: DoctrineId): string {
     merge_gambler: "Gambler",
     path_warden: "Warden",
     deep_coffers: "Coffers",
+    siege_battery: "Siege",
+    swarm_tide: "Swarm",
+    iron_curtain: "Curtain",
   };
   return map[id] ?? def.name;
 }

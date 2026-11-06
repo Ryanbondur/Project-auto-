@@ -1,3 +1,12 @@
+/** Placeholder silhouette family — neon draw adapters; sprites may ignore. */
+export type UnitRoleShape =
+  | "melee"
+  | "ballistic"
+  | "siege"
+  | "support"
+  | "energy"
+  | "swarm";
+
 /** Content definition (roster entry). */
 export type UnitDef = {
   id: string;
@@ -15,6 +24,10 @@ export type UnitDef = {
     starLevel2: string;
     starLevel3: string;
   };
+  /** Optional draw hint — keep adapters happy while art lands separately. */
+  roleShape?: UnitRoleShape;
+  /** Optional era/role accent hex for procedural fills. */
+  accentColor?: string;
 };
 
 /** Unbounded star level (pairwise merge; no hard cap for now). */
@@ -269,21 +282,31 @@ export type EraDiscoveryState = {
  */
 export type RunEventId =
   | "boss_arena"
+  | "boss_arena_elite"
   | "trait_chest"
   | "gold_board_slot"
   | "gold_heal_core"
   | "gold_rerolls"
+  | "gold_shop_offers"
+  | "gold_leak_brace"
+  | "gold_interest_deal"
   | "board_slot_plus"
   | "path_slow_lane"
   | "path_mutate"
+  | "path_fork_lane"
   | "draft_duel"
   | "interest_bonus"
   | "creep_hp_cut"
-  | "ballistic_damage";
+  | "ballistic_damage"
+  | "melee_surge"
+  | "support_surge"
+  | "free_buff_chip";
 
 /** Trait ids that stack additively with no cap (logged on modifiers.traits). */
 export type RunTraitId =
   | "ballistic_damage"
+  | "melee_damage"
+  | "support_as"
   | "interest_bonus"
   | "creep_hp_cut"
   | "board_slot_plus"
@@ -295,7 +318,10 @@ export type DoctrineId =
   | "support_aura"
   | "merge_gambler"
   | "path_warden"
-  | "deep_coffers";
+  | "deep_coffers"
+  | "siege_battery"
+  | "swarm_tide"
+  | "iron_curtain";
 
 export type DoctrineDef = {
   id: DoctrineId;
@@ -327,10 +353,15 @@ export type PathMutationResult =
 /** Named era boss story beat. */
 export type EraBossId =
   | "boss_path_splitter"
+  | "boss_tribe_warlord"
   | "boss_gold_tax"
+  | "boss_siege_saint"
   | "boss_shop_lock"
+  | "boss_furnace_king"
   | "boss_silence_choir"
-  | "boss_endless_tax";
+  | "boss_blackout"
+  | "boss_endless_tax"
+  | "boss_glitch_sovereign";
 
 export type EraBossMechanic =
   | "path_splitter"
@@ -423,6 +454,8 @@ export type BossArenaState = {
   bossDefId: string;
   /** Wave number label (display); combat uses a dedicated spawn. */
   displayWave: number;
+  /** Elite bounty: tougher HP, richer loot. */
+  elite?: boolean;
 };
 
 /**
@@ -434,6 +467,10 @@ export type RunModifiers = {
   boardSlotsBonus: number;
   /** Additive damage bonus for Ballistic-tagged units (e.g. 0.1 = +10%). */
   ballisticDamageBonus: number;
+  /** Additive damage bonus for Melee-tagged units. */
+  meleeDamageBonus: number;
+  /** Additive attack-speed bonus for Support-tagged units. */
+  supportAsBonus: number;
   /** Flat interest added on the next wave payout, then cleared. */
   interestBonusNextPayout: number;
   /** Multiplier applied to next wave creep HP on spawn, then reset to 1. */
@@ -452,6 +489,8 @@ export type RunModifiers = {
   shopDisabledThisPrep: boolean;
   /** Living-path brief fork anchor (sabotage-style divert). */
   pathFork: { pathIndex: number; wavesRemaining: number } | null;
+  /** Pending free chip grant from events (resolved by store). */
+  pendingFreeChip?: boolean;
 };
 
 export type RunState = {

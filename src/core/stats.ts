@@ -4,7 +4,9 @@ import {
   DOCTRINE_SUPPORT_AURA_DAMAGE,
   DOCTRINE_SUPPORT_AURA_RANGE,
   doctrineBallisticAsBonus,
+  doctrineSiegeDamageBonus,
   doctrineSupportsAura,
+  doctrineSwarmAsBonus,
 } from "./doctrine";
 import type { DoctrineId, UnitInstance } from "./types";
 
@@ -20,7 +22,8 @@ export type EffectiveStats = {
  * effectiveStats(unit) = scale(base, star) * meta multipliers.
  * Master Mason range mult applied to range.
  * Quick Assembly: +mergedAsBonus attack speed when fromMerge / star≥2 (Phase 5).
- * Ballistic Overclock doctrine: +AS on Ballistic tags.
+ * Ballistic Overclock / Swarm Tide: +AS on matching tags.
+ * Siege Battery: +damage on Siege tags.
  * Support Aura doctrine: nearby allies get +damage (caller passes board).
  */
 export function effectiveStats(
@@ -42,6 +45,14 @@ export function effectiveStats(
     def.tags.includes("Ballistic") && doctrineId
       ? 1 + doctrineBallisticAsBonus(doctrineId)
       : 1;
+  const swarmAs =
+    def.tags.includes("Swarm") && doctrineId
+      ? 1 + doctrineSwarmAsBonus(doctrineId)
+      : 1;
+  const siegeDmg =
+    def.tags.includes("Siege") && doctrineId
+      ? 1 + doctrineSiegeDamageBonus(doctrineId)
+      : 1;
 
   let auraDmg = 1;
   if (doctrineSupportsAura(doctrineId) && unit.tile) {
@@ -60,8 +71,9 @@ export function effectiveStats(
   }
 
   return {
-    damage: def.stats.damage * starMult * auraDmg,
-    attackSpeed: def.stats.attackSpeed * starMult * asBonus * ballisticAs,
+    damage: def.stats.damage * starMult * auraDmg * siegeDmg,
+    attackSpeed:
+      def.stats.attackSpeed * starMult * asBonus * ballisticAs * swarmAs,
     range: def.stats.range * starMult * rangeMult,
     aoeRadius: def.stats.aoeRadius * starMult,
     starMult,

@@ -133,6 +133,8 @@ function normalizeLoadedRun(run: RunState): RunState {
   const modifiers = run.modifiers ?? {
     boardSlotsBonus: 0,
     ballisticDamageBonus: 0,
+    meleeDamageBonus: 0,
+    supportAsBonus: 0,
     interestBonusNextPayout: 0,
     nextWaveHpMult: 1,
     freeRerolls: 0,
@@ -146,6 +148,12 @@ function normalizeLoadedRun(run: RunState): RunState {
   if (typeof modifiers.boardSlotsBonus !== "number") modifiers.boardSlotsBonus = 0;
   if (typeof modifiers.ballisticDamageBonus !== "number") {
     modifiers.ballisticDamageBonus = 0;
+  }
+  if (typeof modifiers.meleeDamageBonus !== "number") {
+    modifiers.meleeDamageBonus = 0;
+  }
+  if (typeof modifiers.supportAsBonus !== "number") {
+    modifiers.supportAsBonus = 0;
   }
   if (typeof modifiers.interestBonusNextPayout !== "number") {
     modifiers.interestBonusNextPayout = 0;

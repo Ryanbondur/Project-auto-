@@ -15,9 +15,40 @@ import { rollShopOffers } from "../src/core/shop";
 import { getEraConfig } from "../src/content/eras";
 
 describe("commander doctrine", () => {
-  it("catalog has 3–5 doctrines", () => {
-    expect(DOCTRINE_DEFS.length).toBeGreaterThanOrEqual(3);
-    expect(DOCTRINE_DEFS.length).toBeLessThanOrEqual(5);
+  it("catalog has 5–8 doctrines with unique ids", () => {
+    expect(DOCTRINE_DEFS.length).toBeGreaterThanOrEqual(5);
+    expect(DOCTRINE_DEFS.length).toBeLessThanOrEqual(8);
+    expect(new Set(DOCTRINE_DEFS.map((d) => d.id)).size).toBe(DOCTRINE_DEFS.length);
+  });
+
+  it("Iron Curtain grants slot + leak brace; Siege Battery biases shop", () => {
+    const state = createInitialRunState(3, [], { doctrineId: "iron_curtain" });
+    expect(state.doctrineId).toBe("iron_curtain");
+    expect(state.modifiers.boardSlotsBonus).toBeGreaterThanOrEqual(1);
+    expect(state.modifiers.leakDamageReduction).toBeGreaterThanOrEqual(1);
+    const era = getEraConfig(3);
+    let siege = 0;
+    let total = 0;
+    for (let seed = 1; seed <= 60; seed++) {
+      const { offers } = rollShopOffers(era, seed, 3, "siege_battery");
+      for (const o of offers) {
+        if (o.kind !== "unit") continue;
+        total += 1;
+        if (
+          o.defId.includes("cannon") ||
+          o.defId.includes("sapper") ||
+          o.defId.includes("boulder") ||
+          o.defId.includes("catapult") ||
+          o.defId.includes("rpg") ||
+          o.defId.includes("mortar") ||
+          o.defId.includes("rail")
+        ) {
+          siege += 1;
+        }
+      }
+    }
+    expect(total).toBeGreaterThan(0);
+    expect(siege / total).toBeGreaterThan(0.12);
   });
 
   it("applies Path Warden mid-path slow and sabotage discount", () => {

@@ -16,6 +16,7 @@ import {
   shouldAdvanceEra,
 } from "./era";
 import {
+  BOSS_ARENA_ELITE_LOOT_GOLD,
   BOSS_ARENA_LOOT_GOLD,
   applyBossArenaFail,
   applyRunEvent,
@@ -352,6 +353,8 @@ function grantEraBossLoot(next: RunState, bossId: string): void {
     pushFeedback(next, `${boss.name} loot: +${pick.amount}g`);
   } else if (pick.kind === "trait") {
     if (pick.traitId === "ballistic_damage") next.modifiers.ballisticDamageBonus += 0.1;
+    else if (pick.traitId === "melee_damage") next.modifiers.meleeDamageBonus += 0.1;
+    else if (pick.traitId === "support_as") next.modifiers.supportAsBonus += 0.1;
     else if (pick.traitId === "interest_bonus") next.modifiers.interestBonusNextPayout += 1;
     else if (pick.traitId === "creep_hp_cut") {
       next.modifiers.nextWaveHpMult = Math.max(0.1, next.modifiers.nextWaveHpMult - 0.1);
@@ -449,12 +452,13 @@ function afterWaveClear(next: RunState): void {
   refreshShopOn(next);
 }
 
-function grantBossArenaLoot(next: RunState): void {
+function grantBossArenaLoot(next: RunState, elite = false): void {
+  const goldLoot = elite ? BOSS_ARENA_ELITE_LOOT_GOLD : BOSS_ARENA_LOOT_GOLD;
   const rand = createRng(next.rngSeed);
   const roll = rand();
   next.rngSeed = (next.rngSeed + 1 + Math.floor(rand() * 1e9)) >>> 0;
   if (roll < 0.34) {
-    next.gold += BOSS_ARENA_LOOT_GOLD;
+    next.gold += goldLoot;
     return;
   }
   if (roll < 0.67) {
@@ -462,7 +466,8 @@ function grantBossArenaLoot(next: RunState): void {
     const pool = unlocked.length > 0 ? unlocked : UNIT_DEFS;
     const def = pool[Math.floor(rand() * pool.length)] ?? pool[0];
     if (def) {
-      next.bench.push(makeUnit(def.id, 1, null));
+      // Elite bounty grants a free 2★ instead of 1★.
+      next.bench.push(makeUnit(def.id, elite ? 2 : 1, null));
       applyMerges(next);
       metaApi.revealCodex([def.id]);
     }
@@ -475,23 +480,48 @@ function grantBossArenaLoot(next: RunState): void {
     const chip: BuffChipInstance = {
       instanceId: createInstanceId("c"),
       defId: chipDef.id,
-      starLevel: 1,
+      starLevel: elite ? 2 : 1,
       socketedOnInstanceId: null,
     };
     next.chips.push(chip);
+    next.chipInventory.push(chip);
     applyMerges(next);
   } else {
-    next.gold += BOSS_ARENA_LOOT_GOLD;
+    next.gold += goldLoot;
   }
 }
 
-function startBossArena(next: RunState): void {
+function grantFreeBuffChip(next: RunState): void {
+  const rand = createRng(next.rngSeed);
+  next.rngSeed = (next.rngSeed + 1 + Math.floor(rand() * 1e9)) >>> 0;
+  const chipDef =
+    BUFF_CHIP_DEFS[Math.floor(rand() * BUFF_CHIP_DEFS.length)] ??
+    BUFF_CHIP_DEFS[0];
+  if (!chipDef) {
+    next.gold += 4;
+    pushFeedback(next, "Chip crate: +4g");
+    return;
+  }
+  const chip: BuffChipInstance = {
+    instanceId: createInstanceId("c"),
+    defId: chipDef.id,
+    starLevel: 1,
+    socketedOnInstanceId: null,
+  };
+  next.chips.push(chip);
+  next.chipInventory.push(chip);
+  applyMerges(next);
+  pushFeedback(next, `Chip crate: ${chipDef.name}`);
+}
+
+function startBossArena(next: RunState, elite = false): void {
   next.phase = "EVENT_ARENA";
   const story = eraBossForWave(next.waveNumber, next.currentEra);
   next.arena = {
     kind: "boss",
     bossDefId: "creep_boss",
     displayWave: next.waveNumber,
+    elite,
   };
   next.creeps = [];
   next.projectiles = [];
@@ -500,7 +530,8 @@ function startBossArena(next: RunState): void {
   next.selectedSabotageId = null;
   next.combatElapsedMs = 0;
   const start = next.path[0] ?? { x: 0, y: 0 };
-  const maxHp = Math.max(1, Math.round(story.maxHp * 1.25));
+  const hpScale = elite ? 1.55 : 1.25;
+  const maxHp = Math.max(1, Math.round(story.maxHp * hpScale));
   const creep = {
     instanceId: createInstanceId("e"),
     defId: "creep_boss",
@@ -969,7 +1000,7 @@ export function createStore(initial?: RunState): GameStore {
         return { ok: false, reason: "insufficient_gold" };
       }
       if (applied.kind === "start_boss_arena") {
-        startBossArena(next);
+        startBossArena(next, applied.elite === true);
         setState(next);
         return { ok: true };
       }
@@ -984,6 +1015,14 @@ export function createStore(initial?: RunState): GameStore {
       if (applied.kind === "start_draft_duel") {
         next.eventChoice = null;
         openDraftDuel(next);
+        setState(next);
+        return { ok: true };
+      }
+      if (applied.kind === "grant_chip") {
+        next.eventChoice = null;
+        grantFreeBuffChip(next);
+        refreshShopOn(next);
+        maybeQueueDraftAfterEvent(next);
         setState(next);
         return { ok: true };
       }
@@ -1121,13 +1160,14 @@ export function createStore(initial?: RunState): GameStore {
         if (result.waveComplete) {
           const next = cloneRunState(state);
           const bossId = next.pendingEraBoss;
+          const eliteArena = next.arena?.elite === true;
           next.arena = null;
           next.creeps = [];
           next.projectiles = [];
           next.waveRuntime = null;
           next.phase = "SHOP_PREP";
           if (bossId) grantEraBossLoot(next, bossId);
-          else grantBossArenaLoot(next);
+          else grantBossArenaLoot(next, eliteArena);
           refreshShopOn(next);
           maybeQueueDraftAfterEvent(next);
           setState(next);
