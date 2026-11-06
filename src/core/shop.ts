@@ -117,8 +117,9 @@ export function rollShopOffers(
 export function createShopState(
   eraConfig: EraConfig,
   seed: number,
+  size: number = SHOP_SIZE,
 ): { shop: ShopState; nextSeed: number } {
-  const { offers, nextSeed } = rollShopOffers(eraConfig, seed);
+  const { offers, nextSeed } = rollShopOffers(eraConfig, seed, size);
   return {
     shop: { offers, rerollCost: 1 },
     nextSeed,

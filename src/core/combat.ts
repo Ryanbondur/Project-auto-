@@ -253,7 +253,12 @@ export function tickCombat(
     if (!creep.alive) continue;
     const def = getCreepDef(creep.defId);
     if (!def) continue;
-    const mult = sabotageSpeedMult(creep.pathIndex, state.pathSabotages);
+    const eventSlow = state.modifiers?.pathSlow?.pathIndex ?? null;
+    const mult = sabotageSpeedMult(
+      creep.pathIndex,
+      state.pathSabotages,
+      eventSlow,
+    );
     const divert = sabotageDivertOffset(
       creep.pathIndex,
       creep.pathT,
@@ -271,6 +276,12 @@ export function tickCombat(
     state.creeps[i] = moved;
     if (leaked) {
       leakedIds.push(moved.instanceId);
+      // Boss arena: leak signals arena fail to the store — never ends the run here.
+      if (state.phase === "EVENT_ARENA") {
+        moved.alive = false;
+        state.creeps[i] = moved;
+        return { leakedIds, defeated: false, waveComplete: false };
+      }
       const leak = applyLeak(state.baseHp, def);
       state.baseHp = leak.baseHp;
       if (leak.defeated) {
@@ -302,7 +313,12 @@ export function tickCombat(
     }
     const aoe = stats.aoeRadius + chipAoeBonus(unit, state.chips);
     const dmgMult = chipDamageMultiplier(unit, state.chips);
-    const damage = stats.damage * dmgMult;
+    const def = getUnitDef(unit.defId);
+    const ballisticBonus =
+      def?.tags.includes("Ballistic") && state.modifiers?.ballisticDamageBonus
+        ? 1 + state.modifiers.ballisticDamageBonus
+        : 1;
+    const damage = stats.damage * dmgMult * ballisticBonus;
     const target = selectTarget(
       unit.targeting,
       unit.tile,

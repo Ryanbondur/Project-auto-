@@ -1,9 +1,10 @@
 import { HEAL_PULSE_INTERVAL_MS } from "./buffEffects";
-import { REROLL_COST, STARTING_BASE_HP } from "./constants";
+import { REROLL_COST, SHOP_SIZE, STARTING_BASE_HP } from "./constants";
 import { getEraConfig } from "../content/eras";
 import { MAP, isPathTile, isPlaceableTile } from "../content/map";
 import { UNIT_DEFS, getUnitDef } from "../content/units";
-import { getBuffChipDef } from "../content/buffChips";
+import { BUFF_CHIP_DEFS, getBuffChipDef } from "../content/buffChips";
+import { getCreepDef } from "../content/creeps";
 import { getPathSabotageDef } from "../content/pathSabotage";
 import { applyWavePayout, sellValue } from "./economy";
 import {
@@ -11,12 +12,31 @@ import {
   shouldAdvanceEra,
 } from "./era";
 import {
+  BOSS_ARENA_LOOT_GOLD,
+  applyBossArenaFail,
+  applyRunEvent,
+  consumeInterestBonus,
+  consumeNextWaveHpMult,
+  consumeShopOfferBonus,
+  createEmptyModifiers,
+  effectiveBoardSlots,
+  rollEventChoices,
+  shouldOfferRunEventAfterEra,
+  shouldOfferRunEventAtWaveBand,
+  tickPathSlowAfterWave,
+} from "./events";
+import { createRng } from "./rng";
+import {
   clearPrepGambitOnReady,
   createGambitState,
   interestMultiplier,
   tryActivateGambit,
 } from "./gambit";
-import { autoMergeChipsPairwise, autoMergePairwise } from "./merge";
+import {
+  autoMergeChipsPairwise,
+  autoMergePairwise,
+  mergeSpecificPair,
+} from "./merge";
 import { tryMoveToBench, tryPlaceOnBoard } from "./placement";
 import { createShopState } from "./shop";
 import { tickCombat } from "./combat";
@@ -97,6 +117,8 @@ function rebindTransferredChips(state: RunState): void {
 }
 
 function applyMerges(state: RunState): void {
+  // Auto-merge is a player toggle (default ON). Drag-to-combine always works.
+  if (!state.autoMergeEnabled) return;
   const unitMerge = autoMergePairwise(state.board, state.bench, () =>
     createInstanceId("m"),
   );
@@ -135,6 +157,10 @@ export function createInitialRunState(
     projectiles: [],
     waveRuntime: null,
     discovery: null,
+    eventChoice: null,
+    arena: null,
+    modifiers: createEmptyModifiers(),
+    autoMergeEnabled: true,
     rngSeed: nextSeed,
     selectedInstanceId: null,
     selectedSabotageId: null,
@@ -177,7 +203,8 @@ function assertPrep(state: RunState): boolean {
 function completeWavePayout(next: RunState): void {
   const mult = interestMultiplier(next.gambit);
   const payout = applyWavePayout(next.gold, next.metaApplied.interestCap);
-  const interest = payout.interest * mult;
+  const bonus = consumeInterestBonus(next.modifiers);
+  const interest = payout.interest * mult + bonus;
   next.gold = next.gold + interest + payout.income;
   next.lastPayout = { interest, income: payout.income };
   next.wavesCleared += 1;
@@ -185,6 +212,7 @@ function completeWavePayout(next: RunState): void {
   if (next.gambit.activeGambit === "double_interest") {
     next.gambit.activeGambit = null;
   }
+  tickPathSlowAfterWave(next.modifiers);
   next.creeps = [];
   next.projectiles = [];
   next.waveRuntime = null;
@@ -195,9 +223,17 @@ function completeWavePayout(next: RunState): void {
   }
 }
 
+function openEventChoice(next: RunState, reason: "era" | "band"): void {
+  const rolled = rollEventChoices(next.rngSeed, next.gold);
+  next.eventChoice = { choices: rolled.choices, reason };
+  next.rngSeed = rolled.nextSeed;
+}
+
 /**
- * After payout: if next wave crosses an era threshold, freeze progress and
- * open Era Discovery. Otherwise refresh shop and return to prep.
+ * After payout: era threshold → ERA_FREEZE (discovery first).
+ * Event Choice opens only after Era Discovery resolves (see pickDiscovery),
+ * or on the late endless 10-wave band when already at era 5.
+ * Never stacks Event + Era sheets the same frame.
  */
 function afterWaveClear(next: RunState): void {
   completeWavePayout(next);
@@ -215,22 +251,119 @@ function afterWaveClear(next: RunState): void {
     next.phase = "ERA_FREEZE";
     next.selectedInstanceId = null;
     next.selectedSabotageId = null;
+    next.eventChoice = null;
     metaApi.revealCodex(rolled.choices.map((c) => c.defId));
     return;
   }
   next.discovery = null;
   next.phase = "SHOP_PREP";
+  if (shouldOfferRunEventAtWaveBand(next.currentEra, next.wavesCleared)) {
+    openEventChoice(next, "band");
+    return;
+  }
   refreshShopOn(next);
+}
+
+function grantBossArenaLoot(next: RunState): void {
+  const rand = createRng(next.rngSeed);
+  const roll = rand();
+  next.rngSeed = (next.rngSeed + 1 + Math.floor(rand() * 1e9)) >>> 0;
+  if (roll < 0.34) {
+    next.gold += BOSS_ARENA_LOOT_GOLD;
+    return;
+  }
+  if (roll < 0.67) {
+    const unlocked = UNIT_DEFS.filter((u) => u.era <= next.currentEra);
+    const pool = unlocked.length > 0 ? unlocked : UNIT_DEFS;
+    const def = pool[Math.floor(rand() * pool.length)] ?? pool[0];
+    if (def) {
+      next.bench.push(makeUnit(def.id, 1, null));
+      applyMerges(next);
+      metaApi.revealCodex([def.id]);
+    }
+    return;
+  }
+  const chipDef =
+    BUFF_CHIP_DEFS[Math.floor(rand() * BUFF_CHIP_DEFS.length)] ??
+    BUFF_CHIP_DEFS[0]!;
+  if (chipDef && getBuffChipDef(chipDef.id)) {
+    const chip: BuffChipInstance = {
+      instanceId: createInstanceId("c"),
+      defId: chipDef.id,
+      starLevel: 1,
+      socketedOnInstanceId: null,
+    };
+    next.chips.push(chip);
+    applyMerges(next);
+  } else {
+    next.gold += BOSS_ARENA_LOOT_GOLD;
+  }
+}
+
+function startBossArena(next: RunState): void {
+  next.phase = "EVENT_ARENA";
+  next.arena = {
+    kind: "boss",
+    bossDefId: "creep_boss",
+    displayWave: next.waveNumber,
+  };
+  next.creeps = [];
+  next.projectiles = [];
+  next.eventChoice = null;
+  next.selectedInstanceId = null;
+  next.selectedSabotageId = null;
+  // Single tough boss — slightly beefier than catalog for arena stakes.
+  const def = getCreepDef("creep_boss");
+  const start = MAP.path[0] ?? { x: 0, y: 0 };
+  const maxHp = Math.max(1, Math.round((def?.maxHp ?? 600) * 1.35));
+  next.creeps.push({
+    instanceId: createInstanceId("e"),
+    defId: "creep_boss",
+    hp: maxHp,
+    maxHp,
+    pathIndex: 0,
+    pathT: 0,
+    x: start.x,
+    y: start.y,
+    alive: true,
+  });
+  next.waveRuntime = {
+    spawnQueue: [],
+    elapsedMs: 0,
+    allSpawned: true,
+    eventHpMult: 1,
+  };
+  next.healPulseCooldownMs = HEAL_PULSE_INTERVAL_MS;
+  for (const u of next.board) {
+    u.cooldownMs = 0;
+    u.currentTargetId = null;
+  }
 }
 
 function refreshShopOn(next: RunState): void {
   const era =
     next.metaApplied.eraThresholds.find((e) => e.era === next.currentEra) ??
     getEraConfig(next.currentEra);
-  const rolled = createShopState(era, next.rngSeed);
+  const bonus = consumeShopOfferBonus(next.modifiers);
+  const size = SHOP_SIZE + Math.max(0, bonus);
+  const rolled = createShopState(era, next.rngSeed, size);
   next.shop = rolled.shop;
   next.rngSeed = rolled.nextSeed;
   revealShopUnits(next.shop.offers);
+}
+
+function boardSlotCap(state: RunState): number {
+  const era =
+    state.metaApplied.eraThresholds.find((e) => e.era === state.currentEra) ??
+    getEraConfig(state.currentEra);
+  return effectiveBoardSlots(era.maxBoardSlots, state.modifiers);
+}
+
+/** Mid-path anchor for event slow lane (path-legal; not start/end). */
+function midPathIndex(): number {
+  const len = MAP.path.length;
+  if (len <= 2) return 0;
+  return Math.floor(len / 2);
 }
 
 export type ActionResult = { ok: true } | { ok: false; reason: string };
@@ -250,9 +383,20 @@ export type GameStore = {
   rerollShop: () => ActionResult;
   sellUnit: (instanceId: string) => ActionResult;
   moveToBench: (instanceId: string) => ActionResult;
+  /**
+   * Explicit drag-combine: drop source onto target when identical id+star.
+   * Auto-merge still runs afterward as a safety net.
+   */
+  mergeOnto: (sourceId: string, targetId: string) => ActionResult;
+  /** Resolve pending run-event choice (index into eventChoice.choices). */
+  pickEvent: (choiceIndex: number) => ActionResult;
+  /** Toggle auto pairwise merge (drag-combine always available). Default ON. */
+  setAutoMergeEnabled: (enabled: boolean) => void;
   socketChip: (chipInstanceId: string, unitInstanceId: string) => ActionResult;
   activateGambit: (gambitId: GambitId) => ActionResult;
   cycleTargeting: (instanceId: string) => ActionResult;
+  /** Debug: force an event choice sheet open. */
+  debugForceEvent: () => ActionResult;
   /** Start autobattle for the current wave. */
   ready: () => ActionResult;
   /**
@@ -340,11 +484,13 @@ export function createStore(initial?: RunState): GameStore {
 
   const startWave = (): ActionResult => {
     if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+    if (state.eventChoice) return { ok: false, reason: "event_pending" };
     const next = cloneRunState(state);
     next.phase = "AUTOBATTLE";
     next.creeps = [];
     next.projectiles = [];
-    next.waveRuntime = planWaveRuntime(next.waveNumber);
+    const hpMult = consumeNextWaveHpMult(next.modifiers);
+    next.waveRuntime = planWaveRuntime(next.waveNumber, hpMult);
     next.selectedInstanceId = null;
     next.selectedSabotageId = null;
     next.gambit = clearPrepGambitOnReady(next.gambit);
@@ -403,15 +549,12 @@ export function createStore(initial?: RunState): GameStore {
       }
 
       if (assertPrep(next) && next.selectedInstanceId && placeable) {
-        const era =
-          next.metaApplied.eraThresholds.find((e) => e.era === next.currentEra) ??
-          getEraConfig(next.currentEra);
         const result = tryPlaceOnBoard(
           next.board,
           next.bench,
           next.selectedInstanceId,
           { x, y },
-          era.maxBoardSlots,
+          boardSlotCap(next),
         );
         if (result.ok) {
           next.board = result.board;
@@ -546,6 +689,67 @@ export function createStore(initial?: RunState): GameStore {
       return { ok: true };
     },
 
+    mergeOnto: (sourceId, targetId) => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      const result = mergeSpecificPair(
+        next.board,
+        next.bench,
+        sourceId,
+        targetId,
+        () => createInstanceId("m"),
+      );
+      if (!result.ok) return { ok: false, reason: result.reason };
+      next.board = result.board;
+      next.bench = result.bench;
+      rebindTransferredChips(next);
+      // Safety net: auto-merge any remaining pairs after explicit combine.
+      applyMerges(next);
+      next.selectedInstanceId = result.product.instanceId;
+      setState(next);
+      return { ok: true };
+    },
+
+    pickEvent: (choiceIndex) => {
+      if (!state.eventChoice) return { ok: false, reason: "no_event" };
+      if (state.phase !== "SHOP_PREP" && state.phase !== "MERGE_SETUP") {
+        return { ok: false, reason: "wrong_phase" };
+      }
+      const choice = state.eventChoice.choices[choiceIndex];
+      if (!choice) return { ok: false, reason: "invalid_choice" };
+      const next = cloneRunState(state);
+      const rand = createRng(next.rngSeed);
+      const applied = applyRunEvent(next, choice.id, midPathIndex(), rand);
+      next.rngSeed = (next.rngSeed + 1 + Math.floor(rand() * 1e9)) >>> 0;
+      if (applied.kind === "cannot_afford") {
+        return { ok: false, reason: "insufficient_gold" };
+      }
+      if (applied.kind === "start_boss_arena") {
+        startBossArena(next);
+        setState(next);
+        return { ok: true };
+      }
+      next.eventChoice = null;
+      refreshShopOn(next);
+      setState(next);
+      return { ok: true };
+    },
+
+    setAutoMergeEnabled: (enabled) => {
+      const next = cloneRunState(state);
+      next.autoMergeEnabled = Boolean(enabled);
+      if (next.autoMergeEnabled) applyMerges(next);
+      setState(next);
+    },
+
+    debugForceEvent: () => {
+      if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
+      const next = cloneRunState(state);
+      openEventChoice(next, "era");
+      setState(next);
+      return { ok: true };
+    },
+
     socketChip: (chipInstanceId, unitInstanceId) => {
       if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
       const next = cloneRunState(state);
@@ -596,30 +800,57 @@ export function createStore(initial?: RunState): GameStore {
     readyStub: () => startWave(),
 
     tick: (dtMs) => {
-      if (state.phase !== "AUTOBATTLE") return;
+      const inArena = state.phase === "EVENT_ARENA";
+      if (state.phase !== "AUTOBATTLE" && !inArena) return;
       if (!state.waveRuntime) return;
 
       // Hot path: mutate in place so canvas rAF stays smooth without
       // structuredClone every frame. React only needs a new snapshot on phase change.
-      spawnDueCreeps(
-        state.waveRuntime,
-        state.creeps,
-        () => createInstanceId("e"),
-        dtMs,
-        state.waveNumber,
-      );
+      if (!inArena) {
+        spawnDueCreeps(
+          state.waveRuntime,
+          state.creeps,
+          () => createInstanceId("e"),
+          dtMs,
+          state.waveNumber,
+          state.waveRuntime.eventHpMult ?? 1,
+        );
+      }
       const result = tickCombat(state, dtMs, () => createInstanceId("p"));
 
-      if (result.defeated) {
-        enterDefeat(state);
-        return;
-      }
+      if (inArena) {
+        // Boss arena: any leak = fail costs; never RUN_DEFEAT from arena alone.
+        if (result.leakedIds.length > 0) {
+          const next = cloneRunState(state);
+          applyBossArenaFail(next);
+          refreshShopOn(next);
+          setState(next);
+          return;
+        }
+        if (result.waveComplete) {
+          const next = cloneRunState(state);
+          next.arena = null;
+          next.creeps = [];
+          next.projectiles = [];
+          next.waveRuntime = null;
+          next.phase = "SHOP_PREP";
+          grantBossArenaLoot(next);
+          refreshShopOn(next);
+          setState(next);
+          return;
+        }
+      } else {
+        if (result.defeated) {
+          enterDefeat(state);
+          return;
+        }
 
-      if (result.waveComplete) {
-        const next = cloneRunState(state);
-        afterWaveClear(next);
-        setState(next);
-        return;
+        if (result.waveComplete) {
+          const next = cloneRunState(state);
+          afterWaveClear(next);
+          setState(next);
+          return;
+        }
       }
 
       // Canvas reads getState() inside rAF (no React needed).
@@ -642,17 +873,21 @@ export function createStore(initial?: RunState): GameStore {
       if (!def) return { ok: false, reason: "unknown_unit" };
 
       const next = cloneRunState(state);
-      const newEra = next.discovery!.newEra;
       const offeredIds = next.discovery!.choices.map((c) => c.defId);
       // Unlock era pools / board slots / shop odds
-      next.currentEra = newEra;
+      next.currentEra = next.discovery!.newEra;
       next.discovery = null;
       // Soft overflow if bench is full — still grant the free 2★
       next.bench.push(makeUnit(def.id, choice.starLevel, null));
       applyMerges(next);
-      refreshShopOn(next);
       next.phase = "SHOP_PREP";
       metaApi.revealCodex(offeredIds);
+      // Queue: Era Discovery first (just resolved), then Event Choice (1 of 2).
+      if (shouldOfferRunEventAfterEra()) {
+        openEventChoice(next, "era");
+      } else {
+        refreshShopOn(next);
+      }
       setState(next);
       return { ok: true };
     },

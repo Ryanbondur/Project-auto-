@@ -1,17 +1,23 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { GameCanvas } from "../canvas/GameCanvas";
 import { gameStore } from "../core/store";
 import { Bench } from "../ui/Bench";
 import { BoardUnits } from "../ui/BoardUnits";
 import { DefeatOverlay } from "../ui/DefeatOverlay";
+import { DragGhostOverlay } from "../ui/DragGhost";
 import { DpsPanel } from "../ui/DpsPanel";
 import { EraDiscoveryModal } from "../ui/EraDiscoveryModal";
+import { EventChoiceModal } from "../ui/EventChoiceModal";
 import { GambitPanel } from "../ui/GambitPanel";
 import { SabotageTray } from "../ui/SabotageTray";
+import { AutoMergeToggle } from "../ui/AutoMergeToggle";
+import { SellZone } from "../ui/SellZone";
 import { Shop } from "../ui/Shop";
 import { StatsBar } from "../ui/StatsBar";
 import { UnitInspectCard } from "../ui/UnitInspectCard";
+import { UnitInspectSheet } from "../ui/UnitInspectSheet";
 import { useGameState } from "../ui/useGameState";
+import { useUnitDrag } from "../ui/useUnitDrag";
 
 export type RunScreenProps = {
   onPause: () => void;
@@ -24,11 +30,33 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
   const [hoverId, setHoverId] = useState<string | null>(null);
   const frozen = state.phase === "ERA_FREEZE";
   const defeated = state.phase === "RUN_DEFEAT";
+  const eventPending = Boolean(state.eventChoice);
   const canReady =
     !frozen &&
     !defeated &&
+    !eventPending &&
     (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP");
-  const fighting = state.phase === "AUTOBATTLE";
+  const fighting =
+    state.phase === "AUTOBATTLE" || state.phase === "EVENT_ARENA";
+  const canDrag =
+    !frozen &&
+    !defeated &&
+    !eventPending &&
+    (state.phase === "SHOP_PREP" || state.phase === "MERGE_SETUP");
+
+  const sellZoneRef = useRef<HTMLDivElement>(null);
+
+  const onInspect = useCallback((instanceId: string) => {
+    setHoverId(null);
+    setInspectId(instanceId);
+    gameStore.selectUnit(instanceId);
+  }, []);
+
+  const drag = useUnitDrag({
+    enabled: canDrag,
+    sellZoneRef,
+    onInspect,
+  });
 
   // Screenshot / automation hook: window.dispatchEvent(new CustomEvent("atd:debug-inspect", { detail: { instanceId } }))
   useEffect(() => {
@@ -43,10 +71,9 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
     return () => window.removeEventListener("atd:debug-inspect", onDebugInspect);
   }, []);
 
-  // Sticky long-press wins over hover preview.
-  const stickyInspect = inspectId;
+  // Sticky long-press sheet wins over hover preview card.
   const hoverInspect =
-    !stickyInspect && hoverId && hoverId !== stickyInspect ? hoverId : null;
+    !inspectId && hoverId ? hoverId : null;
 
   return (
     <div className={`run-screen${frozen ? " frozen" : ""}`}>
@@ -55,11 +82,13 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
         <main className="board-column">
           <div className="board-stack">
             <GameCanvas
-              onInspectUnit={(id) => {
-                setHoverId(null);
-                setInspectId(id);
-              }}
+              onBoardUnitDragStart={drag.onPointerDown}
+              onBoardUnitDragMove={drag.onPointerMove}
+              onBoardUnitDragUp={drag.onPointerUp}
+              onBoardUnitDragCancel={drag.onPointerCancel}
+              onInspectUnit={onInspect}
               onHoverUnit={setHoverId}
+              externalDragging={Boolean(drag.ghost)}
             />
             <DpsPanel />
           </div>
@@ -71,14 +100,28 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
               onClick={() => gameStore.ready()}
               title="Start the wave — creeps march, units autobattle"
             >
-              {fighting ? "Fighting…" : frozen ? "Era Discovery…" : "Ready"}
+              {state.phase === "EVENT_ARENA"
+                ? "Arena…"
+                : fighting
+                  ? "Fighting…"
+                  : frozen
+                    ? "Era Discovery…"
+                    : eventPending
+                      ? "Event…"
+                      : "Ready"}
             </button>
+            <SellZone hot={drag.sellHot} zoneRef={sellZoneRef} />
+            <AutoMergeToggle />
             <span className="muted ready-hint">
               {frozen
                 ? "Wave frozen — pick a free 2★ unit"
-                : fighting
-                  ? `Wave ${state.waveNumber}`
-                  : "Start wave"}
+                : eventPending
+                  ? "Pick a run event"
+                  : state.phase === "EVENT_ARENA"
+                    ? "Boss arena — win loot or pay fail cost"
+                    : fighting
+                      ? `Wave ${state.waveNumber}`
+                      : "Start wave"}
             </span>
             {!defeated && (
               <button
@@ -95,19 +138,32 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
       </div>
       <div className="chrome-bottom">
         <Shop />
-        <Bench />
-        <BoardUnits />
+        <Bench
+          onUnitPointerDown={drag.onPointerDown}
+          onUnitPointerMove={drag.onPointerMove}
+          onUnitPointerUp={drag.onPointerUp}
+          onUnitPointerCancel={drag.onPointerCancel}
+        />
+        <BoardUnits
+          onUnitPointerDown={drag.onPointerDown}
+          onUnitPointerMove={drag.onPointerMove}
+          onUnitPointerUp={drag.onPointerUp}
+          onUnitPointerCancel={drag.onPointerCancel}
+          onInspect={onInspect}
+        />
         <SabotageTray />
         <GambitPanel />
       </div>
       {state.phase === "ERA_FREEZE" && <EraDiscoveryModal />}
-      {defeated && <DefeatOverlay onLeave={onLeaveDefeat} />}
-      {stickyInspect && (
-        <UnitInspectCard
-          instanceId={stickyInspect}
+      {state.eventChoice && <EventChoiceModal />}
+      {inspectId && (
+        <UnitInspectSheet
+          instanceId={inspectId}
           onClose={() => setInspectId(null)}
         />
       )}
+      <DragGhostOverlay ghost={drag.ghost} />
+      {defeated && <DefeatOverlay onLeave={onLeaveDefeat} />}
       {hoverInspect && (
         <UnitInspectCard
           instanceId={hoverInspect}

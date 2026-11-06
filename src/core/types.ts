@@ -141,6 +141,8 @@ export type WaveRuntime = {
   spawnQueue: { creepId: string; spawnAtMs: number }[];
   elapsedMs: number;
   allSpawned: boolean;
+  /** Run-event HP mult snapped at Ready (e.g. 0.9 for Weakened swarm). */
+  eventHpMult: number;
 };
 
 export type EraConfig = {
@@ -176,6 +178,7 @@ export type RunPhase =
   | "SHOP_PREP"
   | "MERGE_SETUP"
   | "AUTOBATTLE"
+  | "EVENT_ARENA"
   | "ERA_FREEZE"
   | "RUN_DEFEAT"
   | "RUN_VICTORY";
@@ -236,6 +239,81 @@ export type EraDiscoveryState = {
   choices: { defId: string; starLevel: 2 }[];
 };
 
+/**
+ * Run events — fire on era change (~every 10 waves); pick exactly 1 of 2.
+ * See core/events.ts for Era Discovery → Event Choice queue rules.
+ */
+export type RunEventId =
+  | "boss_arena"
+  | "trait_chest"
+  | "gold_board_slot"
+  | "gold_heal_core"
+  | "gold_rerolls"
+  | "board_slot_plus"
+  | "path_slow_lane"
+  | "interest_bonus"
+  | "creep_hp_cut"
+  | "ballistic_damage";
+
+/** Trait ids that stack additively with no cap (logged on modifiers.traits). */
+export type RunTraitId =
+  | "ballistic_damage"
+  | "interest_bonus"
+  | "creep_hp_cut"
+  | "board_slot_plus";
+
+export type RunEventChoice = {
+  id: RunEventId;
+  title: string;
+  blurb: string;
+  goldCost?: number;
+  kind: "boss" | "chest" | "spend" | "passive";
+};
+
+/** Pending Event Choice sheet — exactly 2 options; blocks Ready until resolved. */
+export type RunEventChoiceState = {
+  choices: RunEventChoice[];
+  /** era = after Era Discovery; band = late endless 10-wave cadence. */
+  reason: "era" | "band";
+  /** Last chest reveal label (UI toast); optional. */
+  lastChestTrait?: string;
+};
+
+/**
+ * Separate boss-arena fight from a boss_arena event.
+ * Fail costs gold/HP but never enters RUN_DEFEAT by itself.
+ */
+export type BossArenaState = {
+  kind: "boss";
+  /** Creep def id for the arena boss. */
+  bossDefId: string;
+  /** Wave number label (display); combat uses a dedicated spawn. */
+  displayWave: number;
+};
+
+/**
+ * Active modifiers persisted on the run (and in atd.run.v1).
+ * Traits stack additively with no cap.
+ */
+export type RunModifiers = {
+  /** Extra board capacity for the rest of the run. */
+  boardSlotsBonus: number;
+  /** Additive damage bonus for Ballistic-tagged units (e.g. 0.1 = +10%). */
+  ballisticDamageBonus: number;
+  /** Flat interest added on the next wave payout, then cleared. */
+  interestBonusNextPayout: number;
+  /** Multiplier applied to next wave creep HP on spawn, then reset to 1. */
+  nextWaveHpMult: number;
+  /** Free rerolls granted by events (mirrored into gambit.freeRerollsRemaining). */
+  freeRerolls: number;
+  /** Extra shop offer slots for the next shop roll this prep. */
+  shopOfferBonusThisPrep: number;
+  /** Temporary mid-path slow lane (reuse sabotage slow rules). */
+  pathSlow: { pathIndex: number; wavesRemaining: number } | null;
+  /** Ordered log of trait grants (stacks uncapped). */
+  traits: RunTraitId[];
+};
+
 export type RunState = {
   phase: RunPhase;
   waveNumber: number;
@@ -261,6 +339,20 @@ export type RunState = {
    * the player picks one free 2★ from the newly unlocked era.
    */
   discovery: EraDiscoveryState | null;
+  /**
+   * Pending run-event choice sheet. Prep chrome stays visible but Ready is
+   * locked until the player picks one option.
+   */
+  eventChoice: RunEventChoiceState | null;
+  /** Active boss-arena encounter (phase === EVENT_ARENA). */
+  arena: BossArenaState | null;
+  /** Persisted active modifiers for this run. */
+  modifiers: RunModifiers;
+  /**
+   * Auto pairwise merge toggle (design-decisions: default ON).
+   * Drag-to-combine always works; auto-merge only when enabled.
+   */
+  autoMergeEnabled: boolean;
   rngSeed: number;
   /** UI: selected unit for place / sell / socket. */
   selectedInstanceId: string | null;

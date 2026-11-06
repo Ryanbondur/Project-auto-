@@ -129,7 +129,40 @@ function normalizeLoadedRun(run: RunState): RunState {
   if (typeof run.healPulseCooldownMs !== "number") {
     run.healPulseCooldownMs = 4000;
   }
-  return { ...run, gambit };
+  const modifiers = run.modifiers ?? {
+    boardSlotsBonus: 0,
+    ballisticDamageBonus: 0,
+    interestBonusNextPayout: 0,
+    nextWaveHpMult: 1,
+    freeRerolls: 0,
+    shopOfferBonusThisPrep: 0,
+    pathSlow: null,
+    traits: [],
+  };
+  if (typeof modifiers.boardSlotsBonus !== "number") modifiers.boardSlotsBonus = 0;
+  if (typeof modifiers.ballisticDamageBonus !== "number") {
+    modifiers.ballisticDamageBonus = 0;
+  }
+  if (typeof modifiers.interestBonusNextPayout !== "number") {
+    modifiers.interestBonusNextPayout = 0;
+  }
+  if (typeof modifiers.nextWaveHpMult !== "number") modifiers.nextWaveHpMult = 1;
+  if (typeof modifiers.freeRerolls !== "number") modifiers.freeRerolls = 0;
+  if (typeof modifiers.shopOfferBonusThisPrep !== "number") {
+    modifiers.shopOfferBonusThisPrep = 0;
+  }
+  if (modifiers.pathSlow && typeof modifiers.pathSlow.pathIndex !== "number") {
+    modifiers.pathSlow = null;
+  }
+  if (!Array.isArray(modifiers.traits)) modifiers.traits = [];
+  const eventChoice = run.eventChoice ?? null;
+  const arena = run.arena ?? null;
+  const autoMergeEnabled =
+    typeof run.autoMergeEnabled === "boolean" ? run.autoMergeEnabled : true;
+  if (run.waveRuntime && typeof run.waveRuntime.eventHpMult !== "number") {
+    run.waveRuntime.eventHpMult = 1;
+  }
+  return { ...run, gambit, modifiers, eventChoice, arena, autoMergeEnabled };
 }
 
 export function loadActiveRun(
