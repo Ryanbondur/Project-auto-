@@ -6,6 +6,11 @@ import { creepWorldPos } from "../core/pathing";
 import { projectileDrawPos } from "../core/combat";
 import type { CreepInstance, Projectile, RunState } from "../core/types";
 import { drawUnit, type DrawContext } from "./drawUnit";
+import {
+  drawBakedFrame,
+  ensureSpriteAtlas,
+  resolveCreepFrame,
+} from "./sprites";
 import { shadeHex, theme, tintHex } from "./theme";
 
 export type { DrawContext };
@@ -20,9 +25,9 @@ export function worldToPx(
 }
 
 /**
- * Thin draw adapters — neon procedural skin (Phase A/B placeholders).
+ * Thin draw adapters — sprite atlas + neon procedural fallbacks.
  * Combat / pathing / economy never depend on these shapes.
- * Later art: replace bodies of drawUnit / drawCreep / drawProjectile;
+ * Swap: recipes / PNG drops behind drawUnit / drawCreep / drawProjectile;
  * keep signatures + world positions from the sim.
  */
 
@@ -207,20 +212,21 @@ export function drawSabotageMarker(
 
 /**
  * Creep position comes from sim-owned `creep.x/y` (continuous tile units).
- * Magenta hostile silhouettes; glow / light glitch reserved for bosses.
+ * Sprite atlas first; magenta procedural fallback. Glow reserved for bosses.
  */
 export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   if (!creep.alive) return;
+  ensureSpriteAtlas();
   const { ctx, tileSize, timeMs } = dc;
   const def = getCreepDef(creep.defId);
   const world = creepWorldPos(creep);
   const { x: cx, y: cy } = worldToPx(world.x + 0.5, world.y + 0.5, tileSize);
-  const boss = def?.isBoss ?? false;
+  const boss = Boolean(def?.isBoss || creep.isBossCreep);
   const id = creep.defId;
   const maxHp = creep.maxHp > 0 ? creep.maxHp : (def?.maxHp ?? 1);
   const hpRatio = Math.max(0, creep.hp / maxHp);
 
-  // Size language: runner slim, tank wide, swarm small, boss ~1.0 tile
+  // Size language for HP bar / fallback silhouettes
   let scale = 0.55;
   if (id === "creep_runner") scale = 0.48;
   else if (id === "creep_tank") scale = 0.68;
@@ -229,70 +235,77 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   if (boss) scale = 0.9;
   const r = tileSize * 0.5 * scale;
 
+  const frame = resolveCreepFrame(creep.defId, boss);
+
   ctx.save();
   if (boss) {
-    // Light glitch only on bosses
     const g = Math.sin(timeMs * 0.02) * 1.4;
     ctx.translate(g, -g * 0.4);
     ctx.shadowColor = theme.magenta;
     ctx.shadowBlur = theme.bossGlowBlur;
   }
 
-  ctx.fillStyle = boss ? tintHex(theme.magenta, 0.1) : theme.magenta;
-  ctx.strokeStyle = boss ? theme.gold : tintHex(theme.magenta, 0.35);
-  ctx.lineWidth = boss ? 2 : 1.25;
-
-  ctx.beginPath();
-  if (id === "creep_runner") {
-    // Elongated diamond — speed read
-    ctx.moveTo(cx, cy - r * 1.15);
-    ctx.lineTo(cx + r * 0.55, cy);
-    ctx.lineTo(cx, cy + r * 1.15);
-    ctx.lineTo(cx - r * 0.55, cy);
-    ctx.closePath();
-  } else if (id === "creep_tank") {
-    // Heavy trapezoid
-    ctx.moveTo(cx - r * 0.85, cy + r * 0.55);
-    ctx.lineTo(cx - r * 0.65, cy - r * 0.45);
-    ctx.lineTo(cx + r * 0.65, cy - r * 0.45);
-    ctx.lineTo(cx + r * 0.85, cy + r * 0.55);
-    ctx.closePath();
-  } else if (id === "creep_swarm") {
-    ctx.moveTo(cx, cy - r);
-    ctx.lineTo(cx + r * 0.9, cy + r * 0.7);
-    ctx.lineTo(cx - r * 0.9, cy + r * 0.7);
-    ctx.closePath();
-  } else if (boss) {
-    // Boss: hexagon
-    for (let i = 0; i < 6; i++) {
-      const a = (Math.PI / 3) * i - Math.PI / 6;
-      const px = cx + Math.cos(a) * r;
-      const py = cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+  if (frame) {
+    drawBakedFrame(ctx, frame, cx, cy, tileSize, 0, 1);
+    if (boss) {
+      // Light cyan glitch ghost — selective, boss only
+      ctx.globalAlpha = 0.22;
+      ctx.shadowBlur = 0;
+      drawBakedFrame(ctx, frame, cx - 2.5, cy + 1.5, tileSize, 0, 1);
+      ctx.globalAlpha = 1;
     }
-    ctx.closePath();
   } else {
-    // Grunt: soft pentagon
-    for (let i = 0; i < 5; i++) {
-      const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-      const px = cx + Math.cos(a) * r;
-      const py = cy + Math.sin(a) * r;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
-    }
-    ctx.closePath();
-  }
-  ctx.fill();
-  ctx.stroke();
+    ctx.fillStyle = boss ? tintHex(theme.magenta, 0.1) : theme.magenta;
+    ctx.strokeStyle = boss ? theme.gold : tintHex(theme.magenta, 0.35);
+    ctx.lineWidth = boss ? 2 : 1.25;
 
-  if (boss || creep.isBossCreep) {
-    // Second glitch ghost
-    ctx.globalAlpha = 0.25;
-    ctx.strokeStyle = theme.cyan;
-    ctx.translate(-2.5, 1.5);
+    ctx.beginPath();
+    if (id === "creep_runner") {
+      ctx.moveTo(cx, cy - r * 1.15);
+      ctx.lineTo(cx + r * 0.55, cy);
+      ctx.lineTo(cx, cy + r * 1.15);
+      ctx.lineTo(cx - r * 0.55, cy);
+      ctx.closePath();
+    } else if (id === "creep_tank") {
+      ctx.moveTo(cx - r * 0.85, cy + r * 0.55);
+      ctx.lineTo(cx - r * 0.65, cy - r * 0.45);
+      ctx.lineTo(cx + r * 0.65, cy - r * 0.45);
+      ctx.lineTo(cx + r * 0.85, cy + r * 0.55);
+      ctx.closePath();
+    } else if (id === "creep_swarm") {
+      ctx.moveTo(cx, cy - r);
+      ctx.lineTo(cx + r * 0.9, cy + r * 0.7);
+      ctx.lineTo(cx - r * 0.9, cy + r * 0.7);
+      ctx.closePath();
+    } else if (boss) {
+      for (let i = 0; i < 6; i++) {
+        const a = (Math.PI / 3) * i - Math.PI / 6;
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    } else {
+      for (let i = 0; i < 5; i++) {
+        const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
+        const px = cx + Math.cos(a) * r;
+        const py = cy + Math.sin(a) * r;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
+    }
+    ctx.fill();
     ctx.stroke();
-    ctx.globalAlpha = 1;
+
+    if (boss) {
+      ctx.globalAlpha = 0.25;
+      ctx.strokeStyle = theme.cyan;
+      ctx.translate(-2.5, 1.5);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
   }
   ctx.restore();
 
@@ -309,7 +322,6 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
     ctx.fillStyle = "rgba(46, 230, 255, 0.55)";
     ctx.fillRect(cx - barW / 2, barY - 3, barW * sh, 2);
   }
-  // Tiny agenda marks (minimal — one glyph, no clutter)
   if (creep.agendas?.length) {
     const mark = creep.agendas[0]!;
     const glyph =

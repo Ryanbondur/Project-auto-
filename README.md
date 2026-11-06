@@ -2,7 +2,7 @@
 
 Web autobattler tower defense: shop → merge/place → autobattle → era climb (Primitive → Cyber), with Commander meta between runs.
 
-**Art-last:** gameplay ships with placeholder visuals (colored rects / labels). Draw adapters (`drawUnit` / `drawCreep` / `drawProjectile`) are thin skins over sim-owned world positions — permanent art should swap in without rewriting combat, pathing, economy, or state.
+**Art-last:** draw adapters (`drawUnit` / `drawCreep` / `drawProjectile`) stay thin skins over sim-owned world positions. Units/creeps render via a **sprite atlas** (`src/canvas/sprites/` — cached Canvas bitmaps with role/era fallbacks); missing art never crashes. How to add a unit sprite: `src/canvas/sprites/README.md`.
 
 **Mobile / iPhone first:** portrait phone layout with safe-area padding, ~44px touch targets, maximized canvas play area, and compact shop/bench chrome. Desktop works as a secondary wider stack.
 
@@ -30,7 +30,7 @@ Web autobattler tower defense: shop → merge/place → autobattle → era climb
 - Codex silhouettes until purchased or encountered (shop / discovery)
 - Pause saves the single active run to `atd.run.v1`; New run replaces it
 
-Still stubbed (art-last): final sprites, era art, audio, juice; fork divert; most buff combat hooks.
+Still stubbed (art-last): unique sheets for eras 2–5, PNG drops, audio, juice; fork divert; most buff combat hooks.
 
 ### Pairwise merge (not 3-of-a-kind)
 

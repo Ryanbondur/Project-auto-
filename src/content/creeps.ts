@@ -4,7 +4,7 @@ import {
 } from "../core/constants";
 import type { CreepDef } from "../core/types";
 
-/** Placeholder creep catalog — art-last circles by type. */
+/** Creep catalog — visuals via sprite atlas (`creep_*` recipes) + thin HP bars. */
 export const CREEP_DEFS: CreepDef[] = [
   {
     id: "creep_runner",
