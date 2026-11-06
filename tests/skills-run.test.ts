@@ -60,6 +60,8 @@ describe("Skills applied to new runs", () => {
       currentTargetId: null,
       chipInstanceIds: [],
       fromMerge: false,
+      damageDealtWave: 0,
+      damageDealtRun: 0,
     };
     const stats = effectiveStats(unit, run.metaApplied);
     expect(stats?.range).toBeCloseTo(3.0 * 1.15, 5);
@@ -78,6 +80,8 @@ describe("Skills applied to new runs", () => {
       currentTargetId: null,
       chipInstanceIds: [],
       fromMerge: true,
+      damageDealtWave: 0,
+      damageDealtRun: 0,
     };
     const stats = effectiveStats(merged, run.metaApplied);
     expect(stats?.attackSpeed).toBeCloseTo(2.2, 5);

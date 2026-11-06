@@ -25,6 +25,8 @@ function unit(
     currentTargetId: null,
     chipInstanceIds: [],
     fromMerge: false,
+    damageDealtWave: 0,
+    damageDealtRun: 0,
   };
 }
 
