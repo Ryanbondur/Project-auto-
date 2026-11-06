@@ -7,10 +7,10 @@ import { UNIT_DEFS, getUnitDef } from "../content/units";
 import { BUFF_CHIP_DEFS, getBuffChipDef } from "../content/buffChips";
 import { PATH_SABOTAGE_DEFS, getPathSabotageDef } from "../content/pathSabotage";
 import {
-  DOCTRINE_BALLISTIC_SHOP_WEIGHT,
-  doctrineBallisticShopBias,
+  DOCTRINE_TAG_SHOP_WEIGHT,
   doctrineChipChanceBonus,
   doctrineSabotageCost,
+  doctrineShopBiasTags,
 } from "./doctrine";
 import { createRng } from "./rng";
 import type {
@@ -54,17 +54,17 @@ function pickUnitOffer(
   eraConfig: EraConfig,
   rand: () => number,
   slotIndex: number,
-  ballisticBias: boolean,
+  biasTags: string[],
 ): ShopOffer {
   const era = pickWeightedEra(eraConfig.shopOdds, rand);
   let pool = unitsForEra(era);
   if (pool.length === 0) pool = unitsForEra(1);
   if (pool.length === 0) pool = UNIT_DEFS;
   let def = pool[Math.floor(rand() * pool.length)] ?? UNIT_DEFS[0]!;
-  if (ballisticBias && pool.length > 0) {
-    // Weighted resample: Ballistic tags get DOCTRINE_BALLISTIC_SHOP_WEIGHT.
+  if (biasTags.length > 0 && pool.length > 0) {
+    // Weighted resample: doctrine-favored tags get DOCTRINE_TAG_SHOP_WEIGHT.
     const weights = pool.map((u) =>
-      u.tags.includes("Ballistic") ? DOCTRINE_BALLISTIC_SHOP_WEIGHT : 1,
+      u.tags.some((t) => biasTags.includes(t)) ? DOCTRINE_TAG_SHOP_WEIGHT : 1,
     );
     const total = weights.reduce((s, w) => s + w, 0);
     let roll = rand() * total;
@@ -99,7 +99,7 @@ export function rollShopOffers(
   const rand = createRng(seed);
   const offers: ShopOffer[] = [];
   const chipChance = SHOP_CHIP_CHANCE + doctrineChipChanceBonus(doctrineId);
-  const ballisticBias = doctrineBallisticShopBias(doctrineId);
+  const biasTags = doctrineShopBiasTags(doctrineId);
 
   for (let i = 0; i < size; i++) {
     const roll = rand();
@@ -136,7 +136,7 @@ export function rollShopOffers(
         purchased: false,
       });
     } else {
-      offers.push(pickUnitOffer(eraConfig, rand, i, ballisticBias));
+      offers.push(pickUnitOffer(eraConfig, rand, i, biasTags));
     }
   }
 

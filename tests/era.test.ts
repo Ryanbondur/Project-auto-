@@ -45,11 +45,11 @@ describe("era thresholds", () => {
 });
 
 describe("era discovery pool", () => {
-  it("has 4 units per era for discovery variety", () => {
+  it("has 6–8+ units per era for discovery variety", () => {
     for (const era of [1, 2, 3, 4, 5] as const) {
-      expect(unitsInEra(era).length).toBe(4);
+      expect(unitsInEra(era).length).toBeGreaterThanOrEqual(6);
     }
-    expect(UNIT_DEFS).toHaveLength(20);
+    expect(UNIT_DEFS.length).toBeGreaterThanOrEqual(36);
   });
 
   it("rolls 3 distinct 2★ choices from the newly unlocked era", () => {
@@ -64,10 +64,9 @@ describe("era discovery pool", () => {
   });
 
   it("samples with replacement only when pool is smaller than count", () => {
-    // Force tiny pool by requesting era with full roster but count > pool via
-    // rollDiscoveryChoices count override — use count 5 with pool 4.
-    const { choices } = rollDiscoveryChoices(3, 7, 5);
-    expect(choices).toHaveLength(5);
+    // Force count larger than era pool (8) so replacement path runs.
+    const { choices } = rollDiscoveryChoices(3, 7, 10);
+    expect(choices).toHaveLength(10);
     expect(choices.every((c) => UNIT_DEFS.find((u) => u.id === c.defId)?.era === 3)).toBe(
       true,
     );

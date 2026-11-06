@@ -406,7 +406,15 @@ export function tickCombat(
       def?.tags.includes("Ballistic") && state.modifiers?.ballisticDamageBonus
         ? 1 + state.modifiers.ballisticDamageBonus
         : 1;
-    const damage = stats.damage * dmgMult * ballisticBonus;
+    const meleeBonus =
+      def?.tags.includes("Melee") && state.modifiers?.meleeDamageBonus
+        ? 1 + state.modifiers.meleeDamageBonus
+        : 1;
+    const supportAs =
+      def?.tags.includes("Support") && state.modifiers?.supportAsBonus
+        ? 1 + state.modifiers.supportAsBonus
+        : 1;
+    const damage = stats.damage * dmgMult * ballisticBonus * meleeBonus;
     const target = selectTarget(
       unit.targeting,
       unit.tile,
@@ -431,7 +439,7 @@ export function tickCombat(
         nextProjectileId,
       ),
     );
-    unit.cooldownMs = 1000 / stats.attackSpeed;
+    unit.cooldownMs = 1000 / (stats.attackSpeed * supportAs);
   }
 
   const anyAlive = state.creeps.some((c) => c.alive && c.hp > 0);

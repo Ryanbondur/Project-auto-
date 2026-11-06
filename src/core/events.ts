@@ -25,6 +25,8 @@ export const BOSS_ARENA_FAIL_GOLD = 8;
 export const BOSS_ARENA_FAIL_HP = 15;
 /** Boss arena win loot gold fallback. */
 export const BOSS_ARENA_LOOT_GOLD = 12;
+/** Elite arena loot gold bump. */
+export const BOSS_ARENA_ELITE_LOOT_GOLD = 18;
 
 export type RunEventDef = {
   id: RunEventId;
@@ -40,6 +42,12 @@ export const RUN_EVENT_DEFS: RunEventDef[] = [
     id: "boss_arena",
     title: "Boss bounty",
     blurb: "Separate arena: beat a tough boss for loot. Fail costs gold/HP — not the run.",
+    kind: "boss",
+  },
+  {
+    id: "boss_arena_elite",
+    title: "Elite bounty",
+    blurb: "Harder arena boss, richer loot. Fail still costs gold/HP — not the run.",
     kind: "boss",
   },
   {
@@ -70,6 +78,27 @@ export const RUN_EVENT_DEFS: RunEventDef[] = [
     kind: "spend",
   },
   {
+    id: "gold_shop_offers",
+    title: "Extra offer",
+    blurb: "Spend 5 gold → +1 shop offer slot this prep.",
+    goldCost: 5,
+    kind: "spend",
+  },
+  {
+    id: "gold_leak_brace",
+    title: "Brace the gate",
+    blurb: "Spend 7 gold → leaks deal 1 less damage (stacks).",
+    goldCost: 7,
+    kind: "spend",
+  },
+  {
+    id: "gold_interest_deal",
+    title: "Bond deal",
+    blurb: "Spend 6 gold → +2 interest on the next wave payout.",
+    goldCost: 6,
+    kind: "spend",
+  },
+  {
     id: "board_slot_plus",
     title: "+1 board slot",
     blurb: "One extra placeable slot for the rest of this run.",
@@ -85,6 +114,12 @@ export const RUN_EVENT_DEFS: RunEventDef[] = [
     id: "path_mutate",
     title: "Living path",
     blurb: "The lane mutates — lengthen, bend, or brief fork. Towers on new path tiles auto-bench.",
+    kind: "passive",
+  },
+  {
+    id: "path_fork_lane",
+    title: "Fork gift",
+    blurb: "Brief path fork for 3 waves — creeps divert sideways near the bend.",
     kind: "passive",
   },
   {
@@ -111,6 +146,24 @@ export const RUN_EVENT_DEFS: RunEventDef[] = [
     blurb: "All Ballistic units +10% damage (stacks, uncapped).",
     kind: "passive",
   },
+  {
+    id: "melee_surge",
+    title: "Melee surge",
+    blurb: "All Melee units +10% damage (stacks, uncapped).",
+    kind: "passive",
+  },
+  {
+    id: "support_surge",
+    title: "Support pulse",
+    blurb: "All Support units +10% attack speed (stacks, uncapped).",
+    kind: "passive",
+  },
+  {
+    id: "free_buff_chip",
+    title: "Chip crate",
+    blurb: "Gain a free random buff chip in inventory.",
+    kind: "chest",
+  },
 ];
 
 /** Random traits granted by the trait chest (additive stacks). */
@@ -124,6 +177,20 @@ export const CHEST_TRAIT_POOL: {
     label: "Ballistic +10% dmg",
     apply: (m) => {
       m.ballisticDamageBonus += 0.1;
+    },
+  },
+  {
+    id: "melee_damage",
+    label: "Melee +10% dmg",
+    apply: (m) => {
+      m.meleeDamageBonus += 0.1;
+    },
+  },
+  {
+    id: "support_as",
+    label: "Support +10% AS",
+    apply: (m) => {
+      m.supportAsBonus += 0.1;
     },
   },
   {
@@ -148,6 +215,13 @@ export const CHEST_TRAIT_POOL: {
       m.boardSlotsBonus += 1;
     },
   },
+  {
+    id: "leak_brace",
+    label: "Leak −1 dmg",
+    apply: (m) => {
+      m.leakDamageReduction += 1;
+    },
+  },
 ];
 
 export function getRunEventDef(id: RunEventId): RunEventDef | undefined {
@@ -158,6 +232,8 @@ export function createEmptyModifiers(): RunModifiers {
   return {
     boardSlotsBonus: 0,
     ballisticDamageBonus: 0,
+    meleeDamageBonus: 0,
+    supportAsBonus: 0,
     interestBonusNextPayout: 0,
     nextWaveHpMult: 1,
     freeRerolls: 0,
@@ -235,9 +311,10 @@ export function rollEventChoices(
 
 export type ApplyEventResult =
   | { kind: "applied"; chestTraitLabel?: string }
-  | { kind: "start_boss_arena" }
+  | { kind: "start_boss_arena"; elite?: boolean }
   | { kind: "path_mutate" }
   | { kind: "start_draft_duel" }
+  | { kind: "grant_chip" }
   | { kind: "cannot_afford" };
 
 /**
@@ -259,7 +336,9 @@ export function applyRunEvent(
   const m = state.modifiers;
   switch (eventId) {
     case "boss_arena":
-      return { kind: "start_boss_arena" };
+      return { kind: "start_boss_arena", elite: false };
+    case "boss_arena_elite":
+      return { kind: "start_boss_arena", elite: true };
     case "trait_chest": {
       const trait =
         CHEST_TRAIT_POOL[Math.floor(rand() * CHEST_TRAIT_POOL.length)] ??
@@ -280,6 +359,17 @@ export function applyRunEvent(
       m.freeRerolls += 2;
       state.gambit.freeRerollsRemaining += 2;
       break;
+    case "gold_shop_offers":
+      m.shopOfferBonusThisPrep += 1;
+      break;
+    case "gold_leak_brace":
+      m.leakDamageReduction += 1;
+      m.traits.push("leak_brace");
+      break;
+    case "gold_interest_deal":
+      m.interestBonusNextPayout += 2;
+      m.traits.push("interest_bonus");
+      break;
     case "path_slow_lane":
       m.pathSlow = {
         pathIndex: Math.max(0, pathAnchorIndex),
@@ -288,6 +378,12 @@ export function applyRunEvent(
       break;
     case "path_mutate":
       return { kind: "path_mutate" };
+    case "path_fork_lane":
+      m.pathFork = {
+        pathIndex: Math.max(0, pathAnchorIndex),
+        wavesRemaining: 3,
+      };
+      break;
     case "draft_duel":
       return { kind: "start_draft_duel" };
     case "interest_bonus":
@@ -302,6 +398,16 @@ export function applyRunEvent(
       m.ballisticDamageBonus += 0.1;
       m.traits.push("ballistic_damage");
       break;
+    case "melee_surge":
+      m.meleeDamageBonus += 0.1;
+      m.traits.push("melee_damage");
+      break;
+    case "support_surge":
+      m.supportAsBonus += 0.1;
+      m.traits.push("support_as");
+      break;
+    case "free_buff_chip":
+      return { kind: "grant_chip" };
     default: {
       const _exhaustive: never = eventId;
       void _exhaustive;

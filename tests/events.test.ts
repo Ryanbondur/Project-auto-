@@ -9,6 +9,7 @@ import {
   applyRunEvent,
   createEmptyModifiers,
   rollEventChoices,
+  RUN_EVENT_DEFS,
   shouldOfferRunEventAfterEra,
   shouldOfferRunEventAtWaveBand,
 } from "../src/core/events";
@@ -38,10 +39,26 @@ class MemoryStorage implements Storage {
 }
 
 describe("run events", () => {
+  it("catalog expanded with unique event ids", () => {
+    expect(RUN_EVENT_DEFS.length).toBeGreaterThanOrEqual(18);
+    expect(new Set(RUN_EVENT_DEFS.map((e) => e.id)).size).toBe(RUN_EVENT_DEFS.length);
+  });
+
   it("rolls exactly 2 choices", () => {
     const { choices } = rollEventChoices(99, 20);
     expect(choices).toHaveLength(2);
     expect(choices[0]!.id).not.toBe(choices[1]!.id);
+  });
+
+  it("applies melee surge and shop-offer gold deal", () => {
+    const state = createInitialRunState(3);
+    const rand = createRng(2);
+    applyRunEvent(state, "melee_surge", 5, rand);
+    expect(state.modifiers.meleeDamageBonus).toBeCloseTo(0.1);
+    state.gold = 20;
+    applyRunEvent(state, "gold_shop_offers", 5, rand);
+    expect(state.modifiers.shopOfferBonusThisPrep).toBe(1);
+    expect(state.gold).toBe(15);
   });
 
   it("offers after era; late band only at era 5 every 10 waves", () => {
