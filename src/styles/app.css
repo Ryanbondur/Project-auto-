@@ -189,10 +189,38 @@ html.standalone body {
   flex-direction: column;
   gap: var(--chrome-gap);
   flex: 0 0 auto;
-  max-height: 36dvh;
+  max-height: min(42dvh, 380px);
+  min-height: 0;
+  /* Clip only — scroll lives in .chrome-scroll so unit strip + gambit stay pinned. */
+  overflow: hidden;
+}
+
+.chrome-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--chrome-gap);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
+}
+
+.chrome-unit-slot,
+.chrome-gambit-slot {
+  flex: 0 0 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.chrome-unit-slot {
+  padding-top: 0.15rem;
+  border-top: 1px solid rgba(46, 230, 255, 0.22);
+}
+
+/* Empty-board hint is desktop-only; collapse the slot on phone. */
+.chrome-unit-slot:has(> .board-hint:only-child) {
+  display: none;
 }
 
 /* —— Compact stats —— */
@@ -466,9 +494,14 @@ html.standalone body {
   padding: 0;
   display: flex;
   flex-direction: row;
+  align-items: stretch;
   gap: 0.35rem;
   overflow-x: auto;
+  overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
+  /* overflow ≠ visible zeros flex min-size — never collapse this strip. */
+  flex-shrink: 0;
+  min-height: 44px;
 }
 
 .board-unit,
@@ -480,9 +513,26 @@ html.standalone body {
   background: var(--bg);
   border: 1px solid var(--border);
   font-size: 0.78rem;
-  min-height: 40px;
+  min-height: 44px;
   flex: 0 0 auto;
-  max-width: 100%;
+  max-width: min(100%, 22rem);
+  min-width: 0;
+}
+
+.board-unit .bench-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.board-unit .bench-select > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.board-unit .btn {
+  flex-shrink: 0;
 }
 
 .chip-inv {
@@ -496,11 +546,14 @@ html.standalone body {
   flex-wrap: wrap;
   align-items: center;
   gap: 0.35rem;
+  flex-shrink: 0;
+  width: 100%;
 }
 
 .gambit-open {
   min-height: var(--touch);
   flex: 1 1 auto;
+  width: 100%;
 }
 
 .gambit-active {
@@ -1365,7 +1418,7 @@ html.standalone body {
   }
 
   .chrome-bottom {
-    max-height: 34dvh;
+    max-height: min(40dvh, 400px);
   }
 }
 
@@ -1382,6 +1435,12 @@ html.standalone body {
 
   .chrome-bottom {
     max-height: none;
+    overflow: visible;
+  }
+
+  .chrome-scroll {
+    overflow: visible;
+    flex: 0 0 auto;
   }
 
   .game-canvas {
