@@ -137,22 +137,28 @@ export function RunScreen({ onPause, onLeaveDefeat }: RunScreenProps) {
         </main>
       </div>
       <div className="chrome-bottom">
-        <Shop />
-        <Bench
-          onUnitPointerDown={drag.onPointerDown}
-          onUnitPointerMove={drag.onPointerMove}
-          onUnitPointerUp={drag.onPointerUp}
-          onUnitPointerCancel={drag.onPointerCancel}
-        />
-        <BoardUnits
-          onUnitPointerDown={drag.onPointerDown}
-          onUnitPointerMove={drag.onPointerMove}
-          onUnitPointerUp={drag.onPointerUp}
-          onUnitPointerCancel={drag.onPointerCancel}
-          onInspect={onInspect}
-        />
-        <SabotageTray />
-        <GambitPanel />
+        <div className="chrome-scroll">
+          <Shop />
+          <Bench
+            onUnitPointerDown={drag.onPointerDown}
+            onUnitPointerMove={drag.onPointerMove}
+            onUnitPointerUp={drag.onPointerUp}
+            onUnitPointerCancel={drag.onPointerCancel}
+          />
+          <SabotageTray />
+        </div>
+        <div className="chrome-unit-slot">
+          <BoardUnits
+            onUnitPointerDown={drag.onPointerDown}
+            onUnitPointerMove={drag.onPointerMove}
+            onUnitPointerUp={drag.onPointerUp}
+            onUnitPointerCancel={drag.onPointerCancel}
+            onInspect={onInspect}
+          />
+        </div>
+        <div className="chrome-gambit-slot">
+          <GambitPanel />
+        </div>
       </div>
       {state.phase === "ERA_FREEZE" && <EraDiscoveryModal />}
       {state.eventChoice && <EventChoiceModal />}
