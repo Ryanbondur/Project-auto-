@@ -549,6 +549,7 @@ function startBossArena(next: RunState, elite = false): void {
     isBossCreep: true,
     displayName: story.name,
     bossMechanic: story.mechanic,
+    eraBossId: story.id,
   };
   initAgendaRuntime(creep, [...story.agendas]);
   next.creeps.push(creep);
@@ -1381,23 +1382,23 @@ export function createStore(initial?: RunState): GameStore {
       return { ok: true };
     },
 
-    /** Era 1 full roster + later-era tint kits for sprite atlas screenshots. */
+    /** Cross-era unique sprites for atlas screenshots (Permanent Art D). */
     debugSeedSpriteArtDemo: () => {
       if (!assertPrep(state)) return { ok: false, reason: "wrong_phase" };
       const next = cloneRunState(state);
       next.gold = Math.max(next.gold, 50);
-      next.currentEra = 1;
+      next.currentEra = 5;
       const roster: { defId: string; star: number; tile: { x: number; y: number } }[] = [
-        // Era 1 unique sprites
         { defId: "unit_slinger", star: 1, tile: { x: 1, y: 1 } },
         { defId: "unit_spearman", star: 2, tile: { x: 2, y: 3 } },
-        { defId: "unit_tribe_drummer", star: 2, tile: { x: 4, y: 1 } },
-        { defId: "unit_boulder_roll", star: 3, tile: { x: 5, y: 5 } },
-        // Later eras — role/era tint kits
-        { defId: "unit_archer", star: 1, tile: { x: 8, y: 3 } },
-        { defId: "unit_cannon", star: 2, tile: { x: 9, y: 8 } },
+        { defId: "unit_archer", star: 1, tile: { x: 4, y: 1 } },
+        { defId: "unit_knight", star: 2, tile: { x: 5, y: 5 } },
+        { defId: "unit_cannon", star: 2, tile: { x: 8, y: 3 } },
+        { defId: "unit_gatling", star: 2, tile: { x: 9, y: 8 } },
         { defId: "unit_m16_soldier", star: 2, tile: { x: 11, y: 5 } },
-        { defId: "unit_laser_grid", star: 2, tile: { x: 12, y: 3 } },
+        { defId: "unit_sniper", star: 2, tile: { x: 12, y: 3 } },
+        { defId: "unit_laser_grid", star: 2, tile: { x: 11, y: 8 } },
+        { defId: "unit_rail_turret", star: 3, tile: { x: 7, y: 1 } },
       ];
       const path = next.path?.length ? next.path : cloneDefaultPath();
       const boarded: UnitInstance[] = [];

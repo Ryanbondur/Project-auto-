@@ -4,6 +4,7 @@
 import { describe, expect, it } from "vitest";
 import { UNIT_DEFS } from "../src/content/units";
 import { CREEP_DEFS } from "../src/content/creeps";
+import { ERA_BOSS_DEFS } from "../src/content/eraBosses";
 import {
   creepArtCoverage,
   creepSpriteCandidates,
@@ -13,6 +14,8 @@ import {
   resetSpriteAtlasForTests,
   resolveCreepRecipeId,
   resolveUnitRecipeId,
+  rosterUniqueCoverage,
+  UNIQUE_BOSS_SPRITES,
   UNIQUE_CREEP_SPRITES,
   UNIQUE_UNIT_SPRITES,
   unitArtCoverage,
@@ -20,19 +23,16 @@ import {
 } from "../src/canvas/sprites";
 
 describe("sprite catalog", () => {
-  it("covers Era 1 roster with unique sprites", () => {
-    for (const id of [
-      "unit_slinger",
-      "unit_spearman",
-      "unit_tribe_drummer",
-      "unit_boulder_roll",
-    ]) {
-      expect(UNIQUE_UNIT_SPRITES.has(id)).toBe(true);
-      expect(unitArtCoverage(id)).toBe("unique");
+  it("covers every catalog unit with a unique sprite", () => {
+    for (const u of UNIT_DEFS) {
+      expect(UNIQUE_UNIT_SPRITES.has(u.id), u.id).toBe(true);
+      expect(unitArtCoverage(u.id), u.id).toBe("unique");
     }
+    const { missingUnits } = rosterUniqueCoverage();
+    expect(missingUnits).toEqual([]);
   });
 
-  it("covers common creeps + boss uniquely", () => {
+  it("covers common creeps + catalog boss uniquely", () => {
     for (const id of [
       "creep_runner",
       "creep_grunt",
@@ -45,15 +45,24 @@ describe("sprite catalog", () => {
     }
   });
 
-  it("resolves every catalog unit to a recipe (role/era fallback)", () => {
+  it("covers every named era boss uniquely", () => {
+    for (const b of ERA_BOSS_DEFS) {
+      expect(UNIQUE_BOSS_SPRITES.has(b.id), b.id).toBe(true);
+      expect(creepArtCoverage(b.id), b.id).toBe("unique");
+    }
+    const { missingBosses } = rosterUniqueCoverage();
+    expect(missingBosses).toEqual([]);
+  });
+
+  it("resolves every catalog unit to its unique recipe", () => {
     resetSpriteAtlasForTests();
     ensureSpriteAtlas();
     for (const u of UNIT_DEFS) {
       const recipe = resolveUnitRecipeId(u.id, "idle", u.era);
-      expect(recipe, u.id).toBeTruthy();
+      expect(recipe, u.id).toBe(u.id);
       expect(hasRecipe(recipe!)).toBe(true);
       const fire = resolveUnitRecipeId(u.id, "fire", u.era);
-      expect(fire, `${u.id} fire`).toBeTruthy();
+      expect(fire, `${u.id} fire`).toBe(u.id);
     }
   });
 
@@ -62,7 +71,17 @@ describe("sprite catalog", () => {
     ensureSpriteAtlas();
     for (const c of CREEP_DEFS) {
       const recipe = resolveCreepRecipeId(c.id, c.isBoss);
-      expect(recipe, c.id).toBeTruthy();
+      expect(recipe, c.id).toBe(c.id);
+      expect(hasRecipe(recipe!)).toBe(true);
+    }
+  });
+
+  it("resolves era bosses via eraBossId while defId stays creep_boss", () => {
+    resetSpriteAtlasForTests();
+    ensureSpriteAtlas();
+    for (const b of ERA_BOSS_DEFS) {
+      const recipe = resolveCreepRecipeId("creep_boss", true, b.id);
+      expect(recipe, b.id).toBe(b.id);
       expect(hasRecipe(recipe!)).toBe(true);
     }
   });
@@ -88,11 +107,15 @@ describe("sprite catalog", () => {
     expect(c.some((x) => x.recipeId === "role:ballistic:era:1")).toBe(true);
   });
 
-  it("lists baked recipe ids including era kits", () => {
+  it("lists baked recipe ids including era kits, bosses, projectiles", () => {
     resetSpriteAtlasForTests();
     const ids = listRecipeIds();
     expect(ids).toContain("unit_slinger");
+    expect(ids).toContain("unit_rail_turret");
     expect(ids).toContain("creep_boss");
+    expect(ids).toContain("boss_glitch_sovereign");
     expect(ids).toContain("role:siege:era:4");
+    expect(ids).toContain("proj_ballistic");
+    expect(ids).toContain("fx_hit_magenta");
   });
 });

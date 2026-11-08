@@ -4,7 +4,9 @@
  */
 
 import { creepSpriteCandidates, frameKey, unitSpriteCandidates } from "./catalog";
+import { buildBossRecipes } from "./recipes/bosses";
 import { buildCreepRecipes } from "./recipes/creeps";
+import { buildProjectileRecipes } from "./recipes/projectiles";
 import { buildUnitRecipes } from "./recipes/units";
 import {
   SPRITE_BAKE_SCALE,
@@ -55,10 +57,19 @@ function bakeRecipe(recipe: SpriteRecipe): void {
   }
 }
 
+function allRecipes(): SpriteRecipe[] {
+  return [
+    ...buildUnitRecipes(),
+    ...buildCreepRecipes(),
+    ...buildBossRecipes(),
+    ...buildProjectileRecipes(),
+  ];
+}
+
 /** Idempotent — call from first board paint or app boot. */
 export function ensureSpriteAtlas(): void {
   if (state.ready) return;
-  const recipes = [...buildUnitRecipes(), ...buildCreepRecipes()];
+  const recipes = allRecipes();
   for (const r of recipes) state.recipes.set(r.id, r);
   if (canBake()) {
     for (const r of recipes) bakeRecipe(r);
@@ -100,15 +111,32 @@ export function resolveUnitFrame(
   return null;
 }
 
-/** First drawable creep frame; null → procedural silhouette. */
+/** First drawable creep / era-boss frame; null → procedural silhouette. */
 export function resolveCreepFrame(
   defId: string,
   isBoss = false,
+  eraBossId?: string | null,
 ): BakedFrame | null {
   ensureSpriteAtlas();
-  for (const c of creepSpriteCandidates(defId, isBoss)) {
+  for (const c of creepSpriteCandidates(defId, isBoss, eraBossId)) {
     const frame = state.frames.get(frameKey("creep", c.recipeId, c.anim));
     if (frame?.source) return frame;
+  }
+  return null;
+}
+
+/** Projectile / FX frame by recipe id. */
+export function resolveFxFrame(
+  recipeId: string,
+  anim: SpriteAnim = "idle",
+  kind: "projectile" | "fx" = "projectile",
+): BakedFrame | null {
+  ensureSpriteAtlas();
+  const frame = state.frames.get(frameKey(kind, recipeId, anim));
+  if (frame?.source) return frame;
+  if (anim === "fire") {
+    const idle = state.frames.get(frameKey(kind, recipeId, "idle"));
+    if (idle?.source) return idle;
   }
   return null;
 }
@@ -129,9 +157,10 @@ export function resolveUnitRecipeId(
 export function resolveCreepRecipeId(
   defId: string,
   isBoss = false,
+  eraBossId?: string | null,
 ): string | null {
   ensureSpriteAtlas();
-  for (const c of creepSpriteCandidates(defId, isBoss)) {
+  for (const c of creepSpriteCandidates(defId, isBoss, eraBossId)) {
     if (state.recipes.has(c.recipeId)) return c.recipeId;
   }
   return null;

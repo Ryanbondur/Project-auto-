@@ -12,6 +12,7 @@ export {
   resetSpriteAtlasForTests,
   resolveUnitFrame,
   resolveCreepFrame,
+  resolveFxFrame,
   resolveUnitRecipeId,
   resolveCreepRecipeId,
   drawBakedFrame,
@@ -22,12 +23,19 @@ export {
 export {
   UNIQUE_UNIT_SPRITES,
   UNIQUE_CREEP_SPRITES,
+  UNIQUE_BOSS_SPRITES,
   unitSpriteCandidates,
   creepSpriteCandidates,
   unitArtCoverage,
   creepArtCoverage,
+  rosterUniqueCoverage,
   frameKey,
   roleEraKey,
 } from "./catalog";
+export {
+  projectileRecipeId,
+  hitFxRecipeId,
+  type ProjectileFamily,
+} from "./recipes/projectiles";
 export type { SpriteAnim, BakedFrame, SpriteRecipe } from "./types";
 export { SPRITE_LOGICAL_SIZE, SPRITE_BAKE_SCALE } from "./types";

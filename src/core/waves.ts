@@ -116,6 +116,7 @@ export function spawnDueCreeps(
       creep.isBossCreep = true;
       creep.displayName = boss.name;
       creep.bossMechanic = boss.mechanic;
+      creep.eraBossId = boss.id;
       initAgendaRuntime(creep, [...boss.agendas]);
       creeps.push(creep);
       context.onEraBossSpawned?.(boss.id);

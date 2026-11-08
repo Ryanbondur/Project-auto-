@@ -5,7 +5,7 @@
 
 export type SpriteAnim = "idle" | "fire";
 
-export type SpriteKind = "unit" | "creep";
+export type SpriteKind = "unit" | "creep" | "projectile" | "fx";
 
 /** Logical frame size in CSS pixels (drawn at tile scale). */
 export const SPRITE_LOGICAL_SIZE = 64;
@@ -15,7 +15,7 @@ export const SPRITE_BAKE_SCALE = 2;
 
 export type SpriteFrameKey = {
   kind: SpriteKind;
-  /** Unit defId, creep defId, or fallback key like `role:ballistic:era:1`. */
+  /** Unit defId, creep/boss defId, projectile family, or fx id. */
   id: string;
   anim: SpriteAnim;
 };
