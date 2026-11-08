@@ -297,10 +297,13 @@ export function drawUnit(
   const role = unitRole(unit.defId, def?.tags);
   const selected = state.selectedInstanceId === unit.instanceId;
 
-  const starBoost = 1 + Math.min(unit.starLevel - 1, 4) * 0.025;
-  const base = tileSize * 0.72 * starBoost;
+  const starBoost = 1 + Math.min(unit.starLevel - 1, 4) * 0.03;
+  const base = tileSize * 0.78 * starBoost;
   const phase = hashPhase(unit.instanceId);
-  const breath = 1 + 0.028 * Math.sin(timeMs * 0.0032 + phase);
+  const wave = Math.sin(timeMs * 0.004 + phase);
+  // Idle life: scale breath + vertical bob (readable at phone tile size)
+  const breath = 1 + 0.05 * wave;
+  const bobY = wave * tileSize * 0.04;
 
   const atkSpeed = def?.stats.attackSpeed ?? 1;
   const period = 1000 / Math.max(0.05, atkSpeed);
@@ -318,33 +321,52 @@ export function drawUnit(
     facing = 0;
   }
 
+  // Fire recoil opposite facing + brief scale punch
+  const recoil = attackFlash * tileSize * 0.07;
+  const drawCx = cx - Math.cos(facing) * recoil;
+  const drawCy = cy - Math.sin(facing) * recoil + bobY;
+  const fireScale = 1 + attackFlash * 0.1;
+
   if (selected) {
     const stats = effectiveStats(unit, state.metaApplied);
     if (stats) drawRangeHint(ctx, cx, cy, stats.range * tileSize);
-    drawSelectRing(ctx, cx, cy, base * 0.48 * breath, tileSize <= 52);
+    const pulse = 1 + 0.05 * Math.sin(timeMs * 0.007 + phase);
+    drawSelectRing(ctx, drawCx, drawCy, base * 0.5 * breath * pulse, tileSize <= 52);
   }
 
   if (unit.starLevel >= 2) {
     ctx.save();
-    ctx.strokeStyle = `rgba(240, 193, 74, ${0.18 + Math.min(unit.starLevel, 5) * 0.05})`;
-    ctx.lineWidth = 1 + Math.min(unit.starLevel, 4) * 0.25;
+    const glow = 0.22 + Math.min(unit.starLevel, 5) * 0.06;
+    const pulse = 1 + 0.035 * Math.sin(timeMs * 0.0055 + phase);
+    ctx.strokeStyle = `rgba(240, 193, 74, ${glow})`;
+    ctx.lineWidth = 1.25 + Math.min(unit.starLevel, 4) * 0.3;
+    ctx.shadowColor = theme.gold;
+    ctx.shadowBlur = selected ? 4 : 2;
     ctx.beginPath();
-    ctx.arc(cx, cy, base * 0.5 * breath, 0, Math.PI * 2);
+    ctx.arc(drawCx, drawCy, base * 0.52 * breath * pulse, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
   }
 
   const frame = resolveUnitFrame(unit.defId, anim, era);
   if (frame) {
-    drawBakedFrame(ctx, frame, cx, cy, tileSize, facing, breath * starBoost);
+    drawBakedFrame(
+      ctx,
+      frame,
+      drawCx,
+      drawCy,
+      tileSize,
+      facing,
+      breath * starBoost * fireScale,
+    );
   } else {
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(drawCx, drawCy);
     ctx.rotate(facing);
-    ctx.scale(breath, breath);
+    ctx.scale(breath * fireScale, breath * fireScale);
     drawSilhouette(ctx, role, base * 0.5, fill, edge, attackFlash);
     ctx.restore();
   }
 
-  drawStarPips(ctx, cx, cy, base * 0.5, unit.starLevel);
+  drawStarPips(ctx, drawCx, drawCy, base * 0.5, unit.starLevel);
 }

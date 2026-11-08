@@ -3,6 +3,8 @@
 import { shadeHex, theme, tintHex } from "../../theme";
 import type { SpriteAnim } from "../types";
 
+export { shadeHex };
+
 export function clear(ctx: CanvasRenderingContext2D, size: number): void {
   ctx.clearRect(0, 0, size, size);
 }
@@ -267,4 +269,77 @@ export function paintSiegeBase(
   ctx.lineTo(cx + s * 0.48, cy + s * 0.36);
   ctx.closePath();
   fillStroke(ctx, fill, edge, 1.65);
+}
+
+/** Soft contact shadow — gives weight at phone tile size. */
+export function paintGroundShadow(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+  fire = false,
+): void {
+  ctx.save();
+  ctx.fillStyle = "rgba(0, 0, 0, 0.38)";
+  ctx.beginPath();
+  ctx.ellipse(
+    cx,
+    cy + s * 0.52,
+    s * (fire ? 0.42 : 0.48),
+    s * (fire ? 0.1 : 0.12),
+    0,
+    0,
+    Math.PI * 2,
+  );
+  ctx.fill();
+  ctx.restore();
+}
+
+/** Small head / helm pip — humanoid read without clutter. */
+export function paintHead(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  s: number,
+  fill: string,
+  edge: string,
+  opts?: { helm?: boolean; crest?: string },
+): void {
+  ctx.beginPath();
+  ctx.arc(cx, cy, s * 0.16, 0, Math.PI * 2);
+  fillStroke(ctx, fill, edge, 1.2);
+  if (opts?.helm) {
+    ctx.beginPath();
+    ctx.arc(cx, cy - s * 0.04, s * 0.18, Math.PI, 0);
+    fillStroke(ctx, shadeHex(fill, 0.2), edge, 1);
+  }
+  if (opts?.crest) {
+    ctx.beginPath();
+    ctx.moveTo(cx - s * 0.06, cy - s * 0.16);
+    ctx.lineTo(cx, cy - s * 0.34);
+    ctx.lineTo(cx + s * 0.06, cy - s * 0.16);
+    ctx.closePath();
+    fillStroke(ctx, opts.crest, edge, 1);
+  }
+}
+
+/** Attack lean + slight squash for fire-frame life. */
+export function withFirePose(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  fire: boolean,
+  paint: () => void,
+): void {
+  if (!fire) {
+    paint();
+    return;
+  }
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-0.1);
+  ctx.scale(1.07, 0.93);
+  ctx.translate(-cx, -cy);
+  paint();
+  ctx.restore();
 }

@@ -1,6 +1,6 @@
-import { eraColor } from "../canvas/theme";
 import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
+import { UnitIcon } from "./UnitIcon";
 import { useGameState } from "./useGameState";
 
 export type BoardUnitsProps = {
@@ -38,7 +38,6 @@ export function BoardUnits({
     <ul className="board-units">
       {state.board.map((unit) => {
         const def = getUnitDef(unit.defId);
-        const fill = def ? eraColor(def.era) : eraColor(1);
         const selected = state.selectedInstanceId === unit.instanceId;
         const label = `${def?.name ?? unit.defId} ${"★".repeat(Math.min(unit.starLevel, 8))}`;
         return (
@@ -61,9 +60,12 @@ export function BoardUnits({
               onPointerUp={onUnitPointerUp}
               onPointerCancel={onUnitPointerCancel}
             >
-              <div
-                className="unit-swatch"
-                style={{ background: fill }}
+              <UnitIcon
+                defId={unit.defId}
+                starLevel={unit.starLevel}
+                selected={selected}
+                animate
+                size={32}
               />
               <span>
                 {label} @ ({unit.tile?.x},{unit.tile?.y}) · {unit.targeting}

@@ -39,3 +39,4 @@ export {
 } from "./recipes/projectiles";
 export type { SpriteAnim, BakedFrame, SpriteRecipe } from "./types";
 export { SPRITE_LOGICAL_SIZE, SPRITE_BAKE_SCALE } from "./types";
+export { paintUnitPortrait } from "./paintPortrait";

@@ -1,7 +1,7 @@
-import { eraColor } from "../canvas/theme";
 import { getUnitDef } from "../content/units";
 import { effectiveStats } from "../core/stats";
 import { gameStore } from "../core/store";
+import { UnitIcon } from "./UnitIcon";
 import { useGameState } from "./useGameState";
 
 export type BenchProps = {
@@ -45,7 +45,6 @@ export function Bench({
       <ul className="bench-slots">
         {state.bench.map((unit) => {
           const def = getUnitDef(unit.defId);
-          const fill = def ? eraColor(def.era) : eraColor(1);
           const stats = effectiveStats(unit, state.metaApplied);
           const selected = state.selectedInstanceId === unit.instanceId;
           const label = `${def?.name ?? unit.defId} ${stars(unit.starLevel)}`;
@@ -71,9 +70,12 @@ export function Bench({
                 onPointerUp={onUnitPointerUp}
                 onPointerCancel={onUnitPointerCancel}
               >
-                <div
-                  className="unit-swatch"
-                  style={{ background: fill }}
+                <UnitIcon
+                  defId={unit.defId}
+                  starLevel={unit.starLevel}
+                  selected={selected}
+                  animate
+                  size={32}
                 />
                 <div>
                   <div className="offer-name">{label}</div>

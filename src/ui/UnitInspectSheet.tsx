@@ -1,8 +1,8 @@
-import { eraColor } from "../canvas/theme";
 import { getUnitDef } from "../content/units";
 import { sellValue } from "../core/economy";
 import { effectiveStats } from "../core/stats";
 import { gameStore } from "../core/store";
+import { UnitIcon } from "./UnitIcon";
 import { useGameState } from "./useGameState";
 
 export type UnitInspectSheetProps = {
@@ -27,7 +27,6 @@ export function UnitInspectSheet({
   if (!unit) return null;
 
   const def = getUnitDef(unit.defId);
-  const fill = def ? eraColor(def.era) : eraColor(1);
   const stats = effectiveStats(unit, state.metaApplied);
   const refund = def ? sellValue(def.cost, unit.starLevel) : 0;
   const canAct =
@@ -48,10 +47,11 @@ export function UnitInspectSheet({
         onClick={(e) => e.stopPropagation()}
       >
         <header className="inspect-header">
-          <span
-            className="unit-swatch"
-            style={{ background: fill }}
-            aria-hidden
+          <UnitIcon
+            defId={unit.defId}
+            starLevel={unit.starLevel}
+            animate
+            size={40}
           />
           <div>
             <h2>
