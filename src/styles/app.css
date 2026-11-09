@@ -368,6 +368,20 @@ html.standalone body {
   border-radius: 2px;
 }
 
+.unit-icon {
+  display: block;
+  image-rendering: auto;
+  background: transparent;
+  vertical-align: middle;
+}
+
+.shop-offer .unit-icon,
+.bench-slot .unit-icon,
+.board-unit .unit-icon {
+  width: 32px;
+  height: 32px;
+}
+
 .offer-body {
   flex: 1;
   min-width: 0;

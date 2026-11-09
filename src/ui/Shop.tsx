@@ -3,6 +3,7 @@ import { getBuffChipDef } from "../content/buffChips";
 import { getPathSabotageDef } from "../content/pathSabotage";
 import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
+import { UnitIcon } from "./UnitIcon";
 import { useGameState } from "./useGameState";
 
 function offerTitle(kind: string, defId: string): string {
@@ -74,11 +75,15 @@ export function Shop() {
               key={offer.slotIndex}
               className={`shop-offer${offer.purchased ? " purchased" : ""}`}
             >
-              <div
-                className="unit-swatch"
-                style={{ background: fill }}
-                aria-hidden
-              />
+              {offer.kind === "unit" ? (
+                <UnitIcon defId={offer.defId} animate size={32} />
+              ) : (
+                <div
+                  className="unit-swatch"
+                  style={{ background: fill }}
+                  aria-hidden
+                />
+              )}
               <div className="offer-body">
                 <div className="offer-name">
                   {offerTitle(offer.kind, offer.defId)}

@@ -2,6 +2,7 @@ import { eraColor } from "../canvas/theme";
 import { getEraConfig } from "../content/eras";
 import { getUnitDef } from "../content/units";
 import { gameStore } from "../core/store";
+import { UnitIcon } from "./UnitIcon";
 import { useGameState } from "./useGameState";
 
 /**
@@ -36,7 +37,6 @@ export function EraDiscoveryModal() {
         <ul className="era-choices">
           {state.discovery.choices.map((choice, index) => {
             const def = getUnitDef(choice.defId);
-            const choiceFill = def ? eraColor(def.era) : fill;
             return (
               <li key={`${choice.defId}-${index}`}>
                 <button
@@ -44,10 +44,12 @@ export function EraDiscoveryModal() {
                   className="era-choice"
                   onClick={() => gameStore.pickDiscovery(index)}
                 >
-                  <span
-                    className="unit-swatch era-choice-swatch"
-                    style={{ background: choiceFill }}
-                    aria-hidden
+                  <UnitIcon
+                    defId={choice.defId}
+                    starLevel={2}
+                    animate
+                    size={40}
+                    className="unit-swatch unit-icon era-choice-swatch"
                   />
                   <span className="era-choice-body">
                     <span className="offer-name">

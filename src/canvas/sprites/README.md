@@ -1,18 +1,21 @@
 # Sprite atlas
 
-Minimal-premium neon unit/creep art behind thin adapters (`drawUnit`, `drawCreep`).
-Combat never imports this folder.
+Minimal-premium neon unit/creep/boss/projectile art behind thin adapters
+(`drawUnit`, `drawCreep`, `drawProjectile`). Combat never imports this folder.
 
 ## Layout
 
 ```
 src/canvas/sprites/
   atlas.ts              # bake + resolve (Canvas 2D cached bitmaps)
-  catalog.ts            # defId → recipe fallbacks (role / era)
+  catalog.ts            # defId → recipe fallbacks (role / era / eraBossId)
   types.ts
   recipes/
-    units.ts            # Era 1 unique + role:era kits (2–5)
-    creeps.ts           # runner / grunt / tank / swarm / boss
+    uniqueUnits.ts      # Eras 1–5 unique idle/fire sheets
+    units.ts            # unique + role:era kits (fallback)
+    creeps.ts           # runner / grunt / tank / swarm / creep_boss
+    bosses.ts           # named era bosses (boss_*)
+    projectiles.ts      # streaks + hit FX
     helpers.ts
 public/sprites/         # optional PNG drops (future handcrafted sheets)
   units/<defId>/idle.png
@@ -26,11 +29,11 @@ Runtime today: **procedural → cached bitmaps** (no PNG required). PNG loader c
 ## How to add a new unit sprite
 
 1. **Content first** — add the `UnitDef` in `src/content/units.ts` (shop/combat work with procedural fallback immediately).
-2. **Role** — ensure `unitRole(defId, tags)` in `src/canvas/unitRole.ts` maps the id (or rely on tags).
-3. **Unique sheet (preferred for hero eras)** — add a recipe in `recipes/units.ts` with `id: "unit_…"`, `anims: ["idle","fire"]`, and a `paint()` silhouette. Register the id in `UNIQUE_UNIT_SPRITES` in `catalog.ts`.
+2. **Role** — ensure `unitRole(defId, tags)` in `src/canvas/unitRole.ts` maps the id (or rely on tags / `roleShape`).
+3. **Unique sheet** — add a recipe in `recipes/uniqueUnits.ts` with `id: "unit_…"`, `anims: ["idle","fire"]`, and a `paint()` silhouette. `UNIQUE_UNIT_SPRITES` is derived from that list.
 4. **Or skip art** — missing unique art automatically uses `role:<role>:era:<n>` kits (tinted). Content PRs never crash rendering.
 5. **Optional PNG** — drop `public/sprites/units/<defId>/idle.png` (+ `fire.png`); wire via atlas when PNG loader lands (TODO).
-6. **Verify** — `npm run typecheck` + place the unit in a run; select ring / star pips stay code-drawn.
+6. **Verify** — `npm run typecheck` + `npm test` + place the unit in a run; select ring / star pips stay code-drawn.
 
 ## Fallback order (units)
 
@@ -40,15 +43,25 @@ Runtime today: **procedural → cached bitmaps** (no PNG required). PNG loader c
 4. `role:generic:era:<era>`
 5. Procedural silhouette stub in `drawUnit.ts`
 
+## Fallback order (creeps / bosses)
+
+1. `eraBossId` unique sheet (`boss_*`) when present
+2. Exact creep / boss `defId`
+3. `creep_boss` for boss flags
+4. `creep_grunt` → `creep:generic` → procedural
+
+Story bosses still spawn with combat `defId: "creep_boss"`; `eraBossId` selects the named silhouette.
+
 ## Coverage
 
 | Set | Status |
 | --- | --- |
-| Era 1 (slinger, spearman, tribe_drummer, boulder_roll) | Unique idle + fire |
-| Eras 2–5 | Role kits, era-tinted — **TODO** unique sheets |
+| All units Eras 1–5 (`UNIT_DEFS`) | Unique idle + fire |
 | Creeps (runner, grunt, tank, swarm, boss) | Unique idle |
-| Projectiles | Procedural streaks (adapter untouched this pass) |
+| Named era bosses (`ERA_BOSS_DEFS`) | Unique idle |
+| Projectiles / hit FX | Family streaks + selective impact bloom |
+| Unknown future content | Role kits / grunt / procedural stubs |
 
 ## Taste
 
-Quiet silhouettes, selective cyan muzzle on `fire`, magenta hostiles, boss-only glow. No board nameplates.
+Quiet silhouettes, selective cyan muzzle on `fire`, magenta hostiles, boss-only glow + light glitch ghost. Hit FX bloom only near projectile arrival. No board nameplates.

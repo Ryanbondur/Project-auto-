@@ -1,6 +1,7 @@
 /**
- * Creep sprite recipes — common roster + boss.
+ * Creep sprite recipes — common roster + generic catalog boss.
  * Flat magenta hostiles; glow/glitch reserved for boss at draw time.
+ * Named era bosses live in `bosses.ts`.
  */
 
 import type { SpriteRecipe } from "../types";
@@ -16,17 +17,18 @@ function runner(): SpriteRecipe {
       clear(ctx, bakePx);
       const { cx, cy, s } = cxcy(bakePx);
       const { fill, shade, edge } = magentaHostile();
-      // Elongated speed diamond
+      // Elongated speed chevron — clearer at tile scale
       ctx.beginPath();
-      ctx.moveTo(cx, cy - s * 1.05);
-      ctx.lineTo(cx + s * 0.42, cy);
-      ctx.lineTo(cx, cy + s * 1.05);
-      ctx.lineTo(cx - s * 0.42, cy);
+      ctx.moveTo(cx + s * 0.95, cy);
+      ctx.lineTo(cx - s * 0.15, cy - s * 0.72);
+      ctx.lineTo(cx - s * 0.45, cy - s * 0.35);
+      ctx.lineTo(cx - s * 0.2, cy);
+      ctx.lineTo(cx - s * 0.45, cy + s * 0.35);
+      ctx.lineTo(cx - s * 0.15, cy + s * 0.72);
       ctx.closePath();
-      fillStroke(ctx, fill, edge, 1.4);
-      // Core eye
+      fillStroke(ctx, fill, edge, 1.45);
       ctx.beginPath();
-      ctx.arc(cx, cy - s * 0.15, s * 0.12, 0, Math.PI * 2);
+      ctx.arc(cx + s * 0.2, cy, s * 0.12, 0, Math.PI * 2);
       fillStroke(ctx, shade, edge, 1);
     },
   };
@@ -45,16 +47,24 @@ function grunt(): SpriteRecipe {
       ctx.beginPath();
       for (let i = 0; i < 5; i++) {
         const a = (Math.PI * 2 * i) / 5 - Math.PI / 2;
-        const px = cx + Math.cos(a) * s * 0.85;
-        const py = cy + Math.sin(a) * s * 0.85;
+        const px = cx + Math.cos(a) * s * 0.88;
+        const py = cy + Math.sin(a) * s * 0.88;
         if (i === 0) ctx.moveTo(px, py);
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      fillStroke(ctx, fill, edge, 1.4);
+      fillStroke(ctx, fill, edge, 1.45);
       ctx.beginPath();
-      ctx.arc(cx, cy - s * 0.08, s * 0.16, 0, Math.PI * 2);
+      ctx.arc(cx, cy - s * 0.06, s * 0.18, 0, Math.PI * 2);
       fillStroke(ctx, shade, edge, 1);
+      // Jaw notch
+      ctx.beginPath();
+      ctx.moveTo(cx - s * 0.12, cy + s * 0.22);
+      ctx.lineTo(cx, cy + s * 0.38);
+      ctx.lineTo(cx + s * 0.12, cy + s * 0.22);
+      ctx.strokeStyle = edge;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
     },
   };
 }
@@ -64,26 +74,31 @@ function tank(): SpriteRecipe {
     id: "creep_tank",
     kind: "creep",
     anims: ["idle"],
-    drawScale: 0.68,
+    drawScale: 0.7,
     paint(ctx, bakePx) {
       clear(ctx, bakePx);
       const { cx, cy, s } = cxcy(bakePx);
       const { fill, shade, edge } = magentaHostile();
       ctx.beginPath();
-      ctx.moveTo(cx - s * 0.9, cy + s * 0.55);
-      ctx.lineTo(cx - s * 0.68, cy - s * 0.42);
-      ctx.lineTo(cx + s * 0.68, cy - s * 0.42);
-      ctx.lineTo(cx + s * 0.9, cy + s * 0.55);
+      ctx.moveTo(cx - s * 0.92, cy + s * 0.55);
+      ctx.lineTo(cx - s * 0.7, cy - s * 0.45);
+      ctx.lineTo(cx + s * 0.7, cy - s * 0.45);
+      ctx.lineTo(cx + s * 0.92, cy + s * 0.55);
       ctx.closePath();
-      fillStroke(ctx, fill, edge, 1.6);
-      // Armor plate
+      fillStroke(ctx, fill, edge, 1.65);
       ctx.beginPath();
-      ctx.moveTo(cx - s * 0.45, cy - s * 0.15);
-      ctx.lineTo(cx + s * 0.45, cy - s * 0.15);
-      ctx.lineTo(cx + s * 0.35, cy + s * 0.22);
-      ctx.lineTo(cx - s * 0.35, cy + s * 0.22);
+      ctx.moveTo(cx - s * 0.48, cy - s * 0.18);
+      ctx.lineTo(cx + s * 0.48, cy - s * 0.18);
+      ctx.lineTo(cx + s * 0.38, cy + s * 0.24);
+      ctx.lineTo(cx - s * 0.38, cy + s * 0.24);
       ctx.closePath();
-      fillStroke(ctx, shade, edge, 1.2);
+      fillStroke(ctx, shade, edge, 1.25);
+      // Rivets
+      for (const ox of [-0.28, 0, 0.28]) {
+        ctx.beginPath();
+        ctx.arc(cx + s * ox, cy + s * 0.02, s * 0.06, 0, Math.PI * 2);
+        fillStroke(ctx, fill, edge, 1);
+      }
     },
   };
 }
@@ -97,16 +112,18 @@ function swarm(): SpriteRecipe {
     paint(ctx, bakePx) {
       clear(ctx, bakePx);
       const { cx, cy, s } = cxcy(bakePx);
-      const { fill, edge } = magentaHostile();
+      const { fill, shade, edge } = magentaHostile();
       ctx.beginPath();
       ctx.moveTo(cx, cy - s * 0.95);
       ctx.lineTo(cx + s * 0.85, cy + s * 0.7);
       ctx.lineTo(cx - s * 0.85, cy + s * 0.7);
       ctx.closePath();
-      fillStroke(ctx, fill, edge, 1.2);
-      // Tiny sibling pip
+      fillStroke(ctx, fill, edge, 1.25);
       ctx.beginPath();
-      ctx.arc(cx + s * 0.55, cy + s * 0.15, s * 0.18, 0, Math.PI * 2);
+      ctx.arc(cx + s * 0.55, cy + s * 0.12, s * 0.2, 0, Math.PI * 2);
+      fillStroke(ctx, shade, edge, 1);
+      ctx.beginPath();
+      ctx.arc(cx - s * 0.4, cy + s * 0.28, s * 0.14, 0, Math.PI * 2);
       fillStroke(ctx, fill, edge, 1);
     },
   };
@@ -117,12 +134,11 @@ function boss(): SpriteRecipe {
     id: "creep_boss",
     kind: "creep",
     anims: ["idle"],
-    drawScale: 0.88,
+    drawScale: 0.9,
     paint(ctx, bakePx) {
       clear(ctx, bakePx);
       const { cx, cy, s } = cxcy(bakePx);
       const { fill, shade, edge } = magentaHostile(true);
-      // Hex body
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 3) * i - Math.PI / 6;
@@ -133,7 +149,6 @@ function boss(): SpriteRecipe {
       }
       ctx.closePath();
       fillStroke(ctx, fill, edge, 2);
-      // Inner corrupt core
       ctx.beginPath();
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 3) * i;
@@ -143,10 +158,9 @@ function boss(): SpriteRecipe {
         else ctx.lineTo(px, py);
       }
       ctx.closePath();
-      fillStroke(ctx, shade, "#2EE6FF", 1.3);
-      // Eye
+      fillStroke(ctx, shade, "#2EE6FF", 1.35);
       ctx.beginPath();
-      ctx.arc(cx, cy, s * 0.14, 0, Math.PI * 2);
+      ctx.arc(cx, cy, s * 0.15, 0, Math.PI * 2);
       fillStroke(ctx, "#2EE6FF", edge, 1);
     },
   };

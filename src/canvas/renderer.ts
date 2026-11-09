@@ -6,12 +6,33 @@ import { creepWorldPos } from "../core/pathing";
 import { projectileDrawPos } from "../core/combat";
 import type { CreepInstance, Projectile, RunState } from "../core/types";
 import { drawUnit, type DrawContext } from "./drawUnit";
+import { getUnitDef } from "../content/units";
 import {
   drawBakedFrame,
   ensureSpriteAtlas,
+  hitFxRecipeId,
+  projectileRecipeId,
   resolveCreepFrame,
+  resolveFxFrame,
+  type ProjectileFamily,
 } from "./sprites";
+import { unitRole } from "./unitRole";
 import { shadeHex, theme, tintHex } from "./theme";
+
+function projectileFamily(
+  projectile: Projectile,
+  state?: RunState,
+): ProjectileFamily {
+  if (projectile.aoeRadius > 0) return "aoe";
+  const source = state?.board.find((u) => u.instanceId === projectile.sourceUnitId);
+  if (source) {
+    const def = getUnitDef(source.defId);
+    const role = unitRole(source.defId, def?.tags);
+    if (role === "energy") return "energy";
+    if (role === "melee") return "melee";
+  }
+  return "ballistic";
+}
 
 export type { DrawContext };
 
@@ -235,7 +256,7 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
   if (boss) scale = 0.9;
   const r = tileSize * 0.5 * scale;
 
-  const frame = resolveCreepFrame(creep.defId, boss);
+  const frame = resolveCreepFrame(creep.defId, boss, creep.eraBossId);
 
   ctx.save();
   if (boss) {
@@ -342,48 +363,81 @@ export function drawCreep(dc: DrawContext, creep: CreepInstance): void {
 }
 
 /**
- * Projectile flight — clean cyan travel; soft impact near arrival.
+ * Projectile flight — atlas streaks + selective impact FX near arrival.
  * Supports unit impressiveness; does not steal focus.
+ * Pass `state` when available so energy/melee families resolve from source role.
  */
-export function drawProjectile(dc: DrawContext, projectile: Projectile): void {
+export function drawProjectile(
+  dc: DrawContext,
+  projectile: Projectile,
+  state?: RunState,
+): void {
+  ensureSpriteAtlas();
   const { ctx, tileSize } = dc;
   const draw = projectileDrawPos(projectile);
   const { x: cx, y: cy } = worldToPx(draw.x, draw.y, tileSize);
   const { x: fx, y: fy } = worldToPx(projectile.from.x, projectile.from.y, tileSize);
 
+  const family = projectileFamily(projectile, state);
   const aoe = projectile.aoeRadius > 0;
-  const head = aoe ? theme.magenta : theme.cyan;
-  const trail = aoe ? "rgba(255, 46, 200, 0.45)" : "rgba(46, 230, 255, 0.5)";
+  const head =
+    family === "aoe" ? theme.magenta : theme.cyan;
+  const facing = Math.atan2(cy - fy, cx - fx);
+  const nearHit = projectile.progress > 0.82;
+  const projFrame = resolveFxFrame(
+    projectileRecipeId(family),
+    nearHit ? "fire" : "idle",
+    "projectile",
+  );
 
-  const tx = fx + (cx - fx) * Math.max(0, projectile.progress - 0.22);
-  const ty = fy + (cy - fy) * Math.max(0, projectile.progress - 0.22);
-
-  ctx.strokeStyle = trail;
-  ctx.lineWidth = aoe ? 2.25 : 1.75;
-  ctx.lineCap = "round";
-  ctx.beginPath();
-  ctx.moveTo(tx, ty);
-  ctx.lineTo(cx, cy);
-  ctx.stroke();
-
-  ctx.beginPath();
-  ctx.arc(cx, cy, tileSize * (aoe ? 0.1 : 0.08), 0, Math.PI * 2);
-  ctx.fillStyle = head;
-  ctx.fill();
-
-  // Soft impact — selective glow only near arrival
-  if (projectile.progress > 0.82) {
-    const t = (projectile.progress - 0.82) / 0.18;
-    ctx.save();
-    ctx.strokeStyle = head;
-    ctx.globalAlpha = 0.35 * t;
-    ctx.lineWidth = 1.25;
-    ctx.shadowColor = head;
-    ctx.shadowBlur = theme.impactGlowBlur;
+  if (projFrame) {
+    // Stretch slightly along flight so the streak reads between from→aim
+    const travel = Math.hypot(cx - fx, cy - fy);
+    const stretch = Math.min(1.35, Math.max(0.85, travel / (tileSize * 0.9)));
+    drawBakedFrame(ctx, projFrame, cx, cy, tileSize, facing, stretch);
+  } else {
+    const trail =
+      family === "aoe" ? "rgba(255, 46, 200, 0.45)" : "rgba(46, 230, 255, 0.5)";
+    const tx = fx + (cx - fx) * Math.max(0, projectile.progress - 0.22);
+    const ty = fy + (cy - fy) * Math.max(0, projectile.progress - 0.22);
+    ctx.strokeStyle = trail;
+    ctx.lineWidth = aoe ? 2.25 : 1.75;
+    ctx.lineCap = "round";
     ctx.beginPath();
-    ctx.arc(cx, cy, tileSize * (0.14 + 0.12 * t), 0, Math.PI * 2);
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(cx, cy);
     ctx.stroke();
-    ctx.restore();
+    ctx.beginPath();
+    ctx.arc(cx, cy, tileSize * (aoe ? 0.1 : 0.08), 0, Math.PI * 2);
+    ctx.fillStyle = head;
+    ctx.fill();
+  }
+
+  // Soft impact — atlas hit FX + selective glow only near arrival
+  if (nearHit) {
+    const t = (projectile.progress - 0.82) / 0.18;
+    const hit = resolveFxFrame(
+      hitFxRecipeId(family),
+      t > 0.55 ? "fire" : "idle",
+      "fx",
+    );
+    if (hit) {
+      ctx.save();
+      ctx.globalAlpha = 0.35 + 0.55 * t;
+      drawBakedFrame(ctx, hit, cx, cy, tileSize, 0, 0.85 + 0.25 * t);
+      ctx.restore();
+    } else {
+      ctx.save();
+      ctx.strokeStyle = head;
+      ctx.globalAlpha = 0.35 * t;
+      ctx.lineWidth = 1.25;
+      ctx.shadowColor = head;
+      ctx.shadowBlur = theme.impactGlowBlur;
+      ctx.beginPath();
+      ctx.arc(cx, cy, tileSize * (0.14 + 0.12 * t), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
   }
 
   if (aoe && projectile.progress > 0.85) {
@@ -423,7 +477,7 @@ export function renderBoard(
   }
   for (const unit of state.board) drawUnit(dc, unit, state);
   for (const creep of state.creeps) drawCreep(dc, creep);
-  for (const proj of state.projectiles) drawProjectile(dc, proj);
+  for (const proj of state.projectiles) drawProjectile(dc, proj, state);
 
   // Placeable hint — subtle inset on last click only (not every empty pad)
   if (state.lastTileClick) {

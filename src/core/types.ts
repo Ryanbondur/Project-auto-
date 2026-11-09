@@ -166,6 +166,11 @@ export type CreepInstance = {
   displayName?: string;
   /** Era boss mechanic id when this is a story boss. */
   bossMechanic?: EraBossMechanic | null;
+  /**
+   * Named era-boss content id for art resolve (`boss_*`).
+   * Combat still uses `defId: "creep_boss"` catalog stats.
+   */
+  eraBossId?: EraBossId | null;
 };
 
 export type WaveDef = {
